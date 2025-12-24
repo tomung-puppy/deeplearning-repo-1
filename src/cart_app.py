@@ -1,63 +1,77 @@
-import sys
 import cv2
+import time
 import threading
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget
-from PyQt5.QtCore import pyqtSignal, QThread
-from src.network.udp_handler import VideoSender
-from src.network.tcp_server import UIUpdateServer
+from network.udp_handler import UDPHandler
+from common.constants import PC2_IP, UDP_PORT_FRONT_CAM, UDP_PORT_CART_CAM, IMG_WIDTH, IMG_HEIGHT
+from utils.image_proc import ImageProcessor
 
-"""
-
-"""
-
-class CartApp(QMainWindow):
+class CartEdgeApp:
     def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Smart Shopping Cart")
-        self.init_ui()
+        # 1. PC2(메인 서버)의 포트 설정 (상수 활용)
+        self.front_sender = UDPHandler(PC2_IP, UDP_PORT_FRONT_CAM)
+        self.cart_sender = UDPHandler(PC2_IP, UDP_PORT_CART_CAM)
         
-        # 영상 송신 모듈 (PC2의 IP와 Port 입력)
-        self.video_sender = VideoSender(target_ip='192.168.0.20', port=9999)
+        # 2. 카메라 장치 연결 (0: 전방, 1: 카트 내부)
+        self.front_cap = cv2.VideoCapture(0)
+        self.cart_cap = cv2.VideoCapture(1)
         
-        # PC2로부터 상태를 업데이트 받을 서버 시작
-        self.update_receiver = UIUpdateServer(port=7000)
-        self.update_receiver.data_received.connect(self.update_dashboard)
-        
-        # 카메라 스레드 시작
+        # 3. 전송 상태 제어
         self.is_running = True
-        threading.Thread(target=self.camera_loop, daemon=True).start()
 
-    def init_ui(self):
-        layout = QVBoxLayout()
-        self.info_label = QLabel("상품을 카트에 담아주세요.")
-        self.price_label = QLabel("합계: 0원")
-        layout.addWidget(self.info_label)
-        layout.addWidget(self.price_label)
-        
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-
-    def camera_loop(self):
-        cap = cv2.VideoCapture(0)
+    def stream_front_camera(self):
+        """전방 카메라 영상 송신 (장애물 인식용)"""
+        print(f"Front camera streaming to {PC2_IP}:{UDP_PORT_FRONT_CAM}...")
         while self.is_running:
-            ret, frame = cap.read()
+            ret, frame = self.front_cap.read()
             if ret:
-                # 영상을 압축하여 PC2로 전송
-                self.video_sender.send_frame(frame)
-        cap.release()
+                # ImageProcessor를 이용한 리사이징 및 인코딩
+                # AI 분석 효율을 위해 상수(640x480)에 맞춰 리사이즈
+                resized_frame = ImageProcessor.resize_for_ai(frame, (IMG_WIDTH, IMG_HEIGHT))
+                encoded_data = ImageProcessor.encode_frame(resized_frame, quality=80)
+                
+                if encoded_data:
+                    self.front_sender.send_frame(encoded_data)
+                    
+            time.sleep(0.03)  # 약 30 FPS 유지
 
-    def update_dashboard(self, data):
-        """PC2로부터 받은 데이터를 UI에 반영 (TCP 수신 결과)"""
-        # data: CartUpdate 객체
-        self.info_label.setText(f"감지된 상품: {data.item_name}")
-        self.price_label.setText(f"합계: {data.total_price}원")
+    def stream_cart_camera(self):
+        """카트 내부 카메라 영상 송신 (상품 스캔용)"""
+        print(f"Cart camera streaming to {PC2_IP}:{UDP_PORT_CART_CAM}...")
+        while self.is_running:
+            ret, frame = self.cart_cap.read()
+            if ret:
+                # 상품 인식용 프레임 처리
+                resized_frame = ImageProcessor.resize_for_ai(frame, (IMG_WIDTH, IMG_HEIGHT))
+                encoded_data = ImageProcessor.encode_frame(resized_frame, quality=85) # 상품 인식은 약간 더 고화질
+                
+                if encoded_data:
+                    self.cart_sender.send_frame(encoded_data)
+                    
+            time.sleep(0.03)
+
+    def stop(self):
+        print("Stopping streams...")
+        self.is_running = False
+        time.sleep(0.5)
+        self.front_cap.release()
+        self.cart_cap.release()
+
+    def run(self):
+        # 두 대의 카메라를 멀티스레드로 동시 송출
+        front_thread = threading.Thread(target=self.stream_front_camera, daemon=True)
+        cart_thread = threading.Thread(target=self.stream_cart_camera, daemon=True)
         
-        if data.is_danger:
-            self.info_label.setText("⚠️ 장애물 주의! ⚠️")
+        front_thread.start()
+        cart_thread.start()
+        
+        # 메인 스레드 대기
+        while self.is_running:
+            time.sleep(1)
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = CartApp()
-    window.show()
-    sys.exit(app.exec_())
+    app = CartEdgeApp()
+    try:
+        app.run()
+    except KeyboardInterrupt:
+        app.stop()
+        print("Streaming stopped.")

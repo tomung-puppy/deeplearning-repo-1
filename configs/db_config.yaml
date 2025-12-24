@@ -1,0 +1,7 @@
+# 데이터베이스 접속 설정
+aws_rds:
+  host: "your-rds-endpoint.aws.com"
+  port: 3306
+  user: "admin"
+  password: "your_password_here"
+  database: "smart_cart_db"

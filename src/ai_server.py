@@ -1,76 +1,42 @@
-import socketserver
-import json
 import cv2
 import numpy as np
-from src.detectors.product_dl import ProductDetector
-from src.detectors.obstacle_dl import ObstacleDetector
-from src.common.protocols import AIResponse, DetectionType
+from network.tcp_server import TCPServer
+from detectors.obstacle_dl import ObstacleDetector  # 장애물 탐지 래퍼
+from detectors.product_dl import ProductRecognizer # 상품 인식 래퍼
 
-# 모델은 서버 시작 시 한 번만 로드하여 메모리에 유지합니다.
-product_model = ProductDetector(model_path='models/product_recognizer/best.pt')
-obstacle_model = ObstacleDetector(model_path='models/obstacle_detector/best.pt')
+class AIServer:
+    def __init__(self):
+        # 모델 로드 (weights 경로는 configs/model_config.yaml 기반으로 설정 권장)
+        self.obstacle_model = ObstacleDetector()
+        self.product_model = ProductRecognizer()
+        
+        # TCP 서버 초기화 (PC1의 IP와 포트 5000번 가정)
+        self.server = TCPServer('0.0.0.0', 5000, self.handle_inference_request)
 
-class AIInferenceHandler(socketserver.BaseRequestHandler):
-    """
-    PC2(Hub)로부터의 TCP 연결을 처리하는 핸들러입니다.
-    """
-    def handle(self):
-        try:
-            # 1. 이미지 데이터 크기 수신 (헤더 처리)
-            # 클라이언트에서 먼저 데이터의 길이를 보낸다고 가정합니다.
-            header = self.request.recv(8)
-            if not header:
-                return
-            
-            data_size = int(header.decode('utf-8').strip())
-            
-            # 2. 실제 이미지 바이트 수신
-            chunks = []
-            bytes_recvd = 0
-            while bytes_recvd < data_size:
-                chunk = self.request.recv(min(data_size - bytes_recvd, 4096))
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                bytes_recvd += len(chunk)
-            
-            frame_data = b"".join(chunks)
-            
-            # 3. 이미지 디코딩 및 추론
-            nparr = np.frombuffer(frame_data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            if frame is not None:
-                results = []
-                # 상품 및 장애물 탐지 실행
-                results.extend(product_model.detect(frame))
-                results.extend(obstacle_model.detect(frame))
-                
-                # 4. 결과 응답 생성 및 전송
-                response = AIResponse(
-                    frame_id=int(cv2.getTickCount()),
-                    detections=results,
-                    timestamp=cv2.getTickCount()
-                )
-                
-                response_json = response.to_json().encode('utf-8')
-                self.request.sendall(response_json)
-                
-        except Exception as e:
-            print(f"Error handling request from {self.client_address}: {e}")
+    def handle_inference_request(self, request):
+        """
+        PC2로부터의 요청을 처리하는 콜백 함수
+        request: { 'type': 'obstacle' or 'product', 'image': [base64 or bytes] }
+        """
+        req_type = request.get('type')
+        img_data = np.frombuffer(request['image'], dtype=np.uint8)
+        frame = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
 
-class ThreadedAIInferenceServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    """
-    여러 연결을 동시에 처리할 수 있는 스레딩 기반 TCP 서버입니다.
-    """
-    daemon_threads = True
-    allow_reuse_address = True
+        if req_type == 'obstacle':
+            # 장애물 탐지 로직 실행 (거리/위험도 판단)
+            result = self.obstacle_model.detect(frame)
+        elif req_type == 'product':
+            # 상품 인식 로직 실행 (클래스 ID 반환)
+            result = self.product_model.recognize(frame)
+        else:
+            result = {"error": "Invalid request type"}
+
+        return result
+
+    def run(self):
+        print("AI Server (PC1) Started...")
+        self.server.start()
 
 if __name__ == "__main__":
-    HOST, PORT = "0.0.0.0", 5000
-    
-    # 서버 생성 및 실행
-    with ThreadedAIInferenceServer((HOST, PORT), AIInferenceHandler) as server:
-        print(f"AI Inference Server (Threaded) started on {HOST}:{PORT}")
-        # 서버가 종료될 때까지 무한 루프
-        server.serve_forever()
+    ai_app = AIServer()
+    ai_app.run()

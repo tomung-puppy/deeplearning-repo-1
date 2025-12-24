@@ -1,90 +1,56 @@
-import threading
-import queue
-import time
-from src.network.tcp_client import AIClient
-from src.database.db_handler import DBHandler
-from src.common.protocols import DetectionResult, CartUpdate, DetectionType
-from src.utils.logger import Logger
+import cv2
+from utils.image_proc import ImageProcessor # 영상 압축/해제 유틸
+from common.constants import DANGER_THRESHOLD_HIGH, DANGER_THRESHOLD_LOW
 
 class SmartCartEngine:
-    def __init__(self, network_config, db_config):
-        self.logger = Logger("Engine")
+    def __init__(self, obstacle_detector, product_recognizer, product_dao):
+        """
+        메인 서버로부터 필요한 모듈들을 주입받아 초기화
+        """
+        self.obstacle_detector = obstacle_detector
+        self.product_recognizer = product_recognizer
+        self.product_dao = product_dao
+        self.last_detected_product = None
+
+    def process_obstacle_frame(self, frame):
+        """
+        전방 영상 분석 엔진: 위험도에 따른 상태 판단
+        """
+        # AI 분석 호출
+        analysis = self.obstacle_detector.detect(frame)
+        danger_level = analysis.get('danger_level', 0)
+
+        # 비즈니스 로직: 위험도에 따른 메시지 결정
+        status = "NORMAL"
+        if danger_level >= DANGER_THRESHOLD_HIGH:
+            status = "CRITICAL_DANGER"
+        elif danger_level >= DANGER_THRESHOLD_LOW:
+            status = "CAUTION"
+
+        return {
+            "status": status,
+            "danger_level": danger_level,
+            "object_count": len(analysis.get('objects', []))
+        }
+
+    def process_product_frame(self, frame):
+        """
+        상품 스캔 엔진: 중복 인식 방지 및 DB 정보 결합
+        """
+        analysis = self.product_recognizer.recognize(frame)
         
-        # 1. 컴포넌트 초기화
-        self.ai_client = AIClient(network_config['pc1_ai']['ip'], network_config['pc1_ai']['port'])
-        self.db_handler = DBHandler(db_config)
+        if analysis['status'] == 'detected':
+            p_id = analysis['product_id']
+            
+            # 동일 상품이 계속 인식되는 것을 방지 (간단한 로직)
+            if p_id != self.last_detected_product:
+                product_info = self.product_dao.get_product_by_id(p_id)
+                if product_info:
+                    self.last_detected_product = p_id
+                    return {"action": "ADD_TO_CART", "data": product_info}
         
-        # 2. 데이터 큐 (영상 프레임 및 처리 결과 저장)
-        self.frame_queue = queue.Queue(maxsize=30)
-        self.result_queue = queue.Queue()
-        
-        # 3. 실행 상태 제어
-        self.is_running = False
+        return {"action": "NONE"}
 
-    def start(self):
-        """엔진의 핵심 스레드들을 시작합니다."""
-        self.is_running = True
-        self.logger.info("Starting Smart Cart Engine...")
-
-        # AI 추론 요청 스레드
-        threading.Thread(target=self._inference_loop, daemon=True).hexdoc()
-        # 결과 처리 및 DB 연동 스레드
-        threading.Thread(target=self._process_results_loop, daemon=True).start()
-
-    def put_frame(self, frame_data):
-        """UDP 핸들러가 수신한 프레임을 큐에 넣습니다."""
-        if not self.frame_queue.full():
-            self.frame_queue.put(frame_data)
-
-    def _inference_loop(self):
-        """큐에서 프레임을 가져와 PC1(AI 서버)에 분석을 요청합니다."""
-        while self.is_running:
-            if not self.frame_queue.empty():
-                frame = self.frame_queue.get()
-                try:
-                    # AI 서버에 TCP로 분석 요청 (JSON 반환 가정)
-                    raw_response = self.ai_client.request_inference(frame)
-                    self.result_queue.put(raw_response)
-                except Exception as e:
-                    self.logger.error(f"Inference request failed: {e}")
-            time.sleep(0.01) # CPU 점유율 조절
-
-    def _process_results_loop(self):
-        """AI 결과를 해석하고 필요한 경우 DB를 조회하여 UI 업데이트 정보를 생성합니다."""
-        while self.is_running:
-            if not self.result_queue.empty():
-                ai_data = self.result_queue.get()
-                
-                for det in ai_data.get('detections', []):
-                    label = det['label']
-                    
-                    if det['detect_type'] == DetectionType.PRODUCT.value:
-                        # 상품인 경우 DB 조회 (AWS RDS TCP 통신)
-                        product_info = self.db_handler.get_product_info(label)
-                        if product_info:
-                            update_packet = CartUpdate(
-                                item_name=product_info['name'],
-                                price=product_info['price'],
-                                quantity=1, # 로직에 따라 증감 처리
-                                total_price=product_info['price']
-                            )
-                            self._send_to_ui(update_packet)
-                            
-                    elif det['detect_type'] == DetectionType.OBSTACLE.value:
-                        # 장애물인 경우 즉시 경고 전송
-                        alert_packet = CartUpdate(
-                            item_name="DANGER", price=0, quantity=0, 
-                            total_price=0, is_danger=True
-                        )
-                        self._send_to_ui(alert_packet)
-            time.sleep(0.01)
-
-    def _send_to_ui(self, update_packet):
-        """PC3(UI)로 결과 데이터를 전송합니다 (TCP Server 사용)."""
-        # 이 부분은 tcp_server.py를 통해 PC3로 push하는 로직이 들어갑니다.
-        self.logger.info(f"Sending update to UI: {update_packet.item_name}")
-        # logic: self.ui_sender.send(update_packet.to_json())
-
-    def stop(self):
-        self.is_running = False
-        self.logger.info("Engine stopped.")
+    def reset_session(self):
+        """세션 종료 시 데이터 초기화"""
+        self.last_detected_product = None

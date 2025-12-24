@@ -1,37 +1,65 @@
-from dataclasses import dataclass, asdict
-from typing import List, Optional
 import json
+import time
 
-"""
-PC 간에 주고받을 JSON 데이터 구조를 클래스 형태로 정의합니다. dataclass를 사용하면 객체를 JSON으로 변환하거나 관리하기가 매우 편리합니다.
-"""
+class Protocol:
+    """
+    모든 PC 간 통신에 사용되는 표준 메시지 포맷 정의
+    """
 
-@dataclass
-class DetectionResult:
-    """PC1(AI)에서 PC2(Hub)로 보내는 개별 객체 탐지 결과"""
-    label: str           # 사물 이름 (예: 'apple', 'coke')
-    confidence: float    # 신뢰도 (0.0 ~ 1.0)
-    bbox: List[int]      # 바운딩 박스 좌표 [x_min, y_min, x_max, y_max]
-    detect_type: str     # DetectionType의 값
+    @staticmethod
+    def create_message(cmd_type, data):
+        """
+        공통 메시지 구조 생성
+        :param cmd_type: 명령 종류 (AI_REQ, DB_RES, UI_ALARM 등)
+        :param data: 실제 전달할 데이터 (dict)
+        """
+        return {
+            "header": {
+                "timestamp": time.time(),
+                "type": cmd_type,
+                "version": "1.0"
+            },
+            "payload": data
+        }
 
-@dataclass
-class AIResponse:
-    """PC1이 PC2에게 주는 최종 응답 패킷"""
-    frame_id: int
-    detections: List[DetectionResult]
-    timestamp: float
+    # --- PC2(Main) -> PC1(AI) 요청 규약 ---
+    @staticmethod
+    def pack_ai_request(task_type, image_bytes):
+        """
+        AI 분석 요청용 패킷
+        task_type: 'obstacle' 또는 'product'
+        """
+        return Protocol.create_message("AI_REQ", {
+            "task": task_type,
+            "image_data": image_bytes.hex()  # 바이트를 문자열로 변환하여 JSON 전송
+        })
 
-    def to_json(self):
-        return json.dumps(asdict(self))
+    # --- PC1(AI) -> PC2(Main) 응답 규약 ---
+    @staticmethod
+    def pack_ai_response(result_data):
+        """AI 분석 결과 응답 패킷"""
+        return Protocol.create_message("AI_RES", result_data)
 
-@dataclass
-class CartUpdate:
-    """PC2(Hub)에서 PC3(UI)로 보내는 장바구니 갱신 정보"""
-    item_name: str
-    price: int
-    quantity: int
-    total_price: int
-    is_danger: bool = False  # 장애물 감지 시 경고 알람용
+    # --- PC2(Main) -> PC3(UI) 제어 규약 ---
+    @staticmethod
+    def pack_ui_command(cmd, content):
+        """
+        UI 업데이트 및 알람 명령
+        cmd: 'SHOW_ALARM', 'ADD_CART', 'SET_STATUS'
+        """
+        return Protocol.create_message("UI_CMD", {
+            "command": cmd,
+            "content": content
+        })
 
-    def to_json(self):
-        return json.dumps(asdict(self))
+    # --- 공통 파서 (수신 측) ---
+    @staticmethod
+    def parse_message(json_str):
+        """수신된 JSON 문자열을 딕셔너리로 변환 및 검증"""
+        try:
+            data = json.loads(json_str)
+            if "header" in data and "payload" in data:
+                return data
+            return None
+        except json.JSONDecodeError:
+            return None

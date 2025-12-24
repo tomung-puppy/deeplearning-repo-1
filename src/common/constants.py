@@ -1,26 +1,44 @@
-from enum import Enum, IntEnum
-
 """
-시스템 전반에서 사용할 에러 코드, 상태 값, 사물 카테고리 등을 정의합니다. 문자열을 직접 쓰기보다 Enum을 사용하면 오타로 인한 버그를 방지할 수 있습니다.
+Smart Shopping Cart Project - System Constants
+모든 모듈에서 공유하는 상수 및 설정값 정의
 """
 
-class DeviceState(IntEnum):
-    """장치의 연결 상태를 나타냅니다."""
-    IDLE = 0
-    CONNECTING = 1
-    RUNNING = 2
-    ERROR = 3
-    TERMINATED = 4
+# --- Network Configuration (Default) ---
+# 실제 운영 시 configs/network_config.yaml에서 로드하지만, 기본값으로 활용
+DEFAULT_PC1_IP = "192.168.0.10"
+DEFAULT_PC2_IP = "192.168.0.20"
+DEFAULT_PC3_IP = "192.168.0.30"
 
-class DetectionType(Enum):
-    """탐지된 객체의 종류를 구분합니다."""
-    PRODUCT = "PRODUCT"   # 상품
-    OBSTACLE = "OBSTACLE" # 장애물
-    NONE = "NONE"
+# Ports
+TCP_PORT_AI = 5000         # PC1: AI Inference Server
+UDP_PORT_FRONT_CAM = 6000  # PC2: Main Hub (Front Camera Stream)
+UDP_PORT_CART_CAM = 6001   # PC2: Main Hub (Cart Camera Stream)
+TCP_PORT_UI = 7000         # PC3: Dashboard UI Command Server
 
-class StatusCode(IntEnum):
-    """통신 응답 코드 정의"""
-    SUCCESS = 200
-    BAD_REQUEST = 400
-    SERVER_ERROR = 500
-    DB_CONNECTION_FAIL = 501
+# --- System Status Codes ---
+STATUS_IDLE = 0
+STATUS_SCANNING = 1
+STATUS_OBSTACLE_DETECTED = 2
+STATUS_PAYMENT_PROCEEDING = 3
+STATUS_ERROR = -1
+
+# --- AI & Camera Settings ---
+IMG_WIDTH = 640
+IMG_HEIGHT = 480
+FRAME_RATE = 30
+
+# --- Error Messages ---
+ERR_DB_CONN = "E101: Database Connection Failed"
+ERR_AI_TIMEOUT = "E201: AI Inference Server Timeout"
+ERR_UDP_DROP = "E301: Video Frame Dropped"
+
+# --- Protocol Command Types ---
+# Protocol.py에서 사용할 명령 레이블
+CMD_ALARM = "SHOW_ALARM"
+CMD_CART_UPDATE = "ADD_CART"
+CMD_SESSION_START = "START_SESSION"
+CMD_SESSION_END = "END_SESSION"
+
+# --- Obstacle Detection Thresholds ---
+DANGER_THRESHOLD_LOW = 0.3
+DANGER_THRESHOLD_HIGH = 0.7
