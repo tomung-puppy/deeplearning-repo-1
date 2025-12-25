@@ -1,65 +1,191 @@
-import json
 import time
+from enum import IntEnum
+from typing import Any, Dict, Optional
 
+
+# =========================
+# Enums
+# =========================
+class MessageType(IntEnum):
+    AI_REQ = 1
+    AI_RES = 2
+    DB_REQ = 3
+    DB_RES = 4
+    UI_CMD = 5
+    UI_EVT = 6
+    AI_EVT = 7 
+
+
+class AITask(IntEnum):
+    OBSTACLE = 1
+    PRODUCT = 2
+
+
+class UICommand(IntEnum):
+    SHOW_ALARM = 1
+    ADD_TO_CART = 2
+    UPDATE_STATUS = 3
+
+
+class UIEvent(IntEnum):
+    CART_UPDATED = 1
+    SESSION_END = 2
+
+
+class DBAction(IntEnum):
+    GET_PRODUCT = 1
+    ADD_CART_ITEM = 2
+    GET_CART = 3
+
+class AIEvent(IntEnum):
+    OBSTACLE_DANGER = 1
+    PRODUCT_DETECTED = 2
+
+class DangerLevel(IntEnum):
+    NORMAL = 0
+    CAUTION = 1
+    CRITICAL = 2
+
+
+
+
+# =========================
+# Protocol
+# =========================
 class Protocol:
     """
-    모든 PC 간 통신에 사용되는 표준 메시지 포맷 정의
+    System-wide JSON control protocol (TCP only)
+    Binary data (image/frame) is NOT allowed.
     """
 
+    VERSION = 1
+
+    # -------------------------
+    # Core
+    # -------------------------
     @staticmethod
-    def create_message(cmd_type, data):
-        """
-        공통 메시지 구조 생성
-        :param cmd_type: 명령 종류 (AI_REQ, DB_RES, UI_ALARM 등)
-        :param data: 실제 전달할 데이터 (dict)
-        """
+    def _base_message(
+        msg_type: MessageType,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
         return {
             "header": {
+                "type": int(msg_type),
                 "timestamp": time.time(),
-                "type": cmd_type,
-                "version": "1.0"
+                "version": Protocol.VERSION,
             },
-            "payload": data
+            "payload": payload,
         }
 
-    # --- PC2(Main) -> PC1(AI) 요청 규약 ---
+    # =========================
+    # AI <-> Main PC2
+    # =========================
     @staticmethod
-    def pack_ai_request(task_type, image_bytes):
-        """
-        AI 분석 요청용 패킷
-        task_type: 'obstacle' 또는 'product'
-        """
-        return Protocol.create_message("AI_REQ", {
-            "task": task_type,
-            "image_data": image_bytes.hex()  # 바이트를 문자열로 변환하여 JSON 전송
-        })
+    def ai_request(task: AITask) -> Dict[str, Any]:
+        return Protocol._base_message(
+            MessageType.AI_REQ,
+            {"task": int(task)},
+        )
 
-    # --- PC1(AI) -> PC2(Main) 응답 규약 ---
     @staticmethod
-    def pack_ai_response(result_data):
-        """AI 분석 결과 응답 패킷"""
-        return Protocol.create_message("AI_RES", result_data)
+    def ai_response(
+        status: bool,
+        analysis: Dict[str, Any],
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = {
+            "status": status,
+            "analysis": analysis,
+        }
+        if error:
+            payload["error"] = error
 
-    # --- PC2(Main) -> PC3(UI) 제어 규약 ---
+        return Protocol._base_message(MessageType.AI_RES, payload)
+    
     @staticmethod
-    def pack_ui_command(cmd, content):
-        """
-        UI 업데이트 및 알람 명령
-        cmd: 'SHOW_ALARM', 'ADD_CART', 'SET_STATUS'
-        """
-        return Protocol.create_message("UI_CMD", {
-            "command": cmd,
-            "content": content
-        })
+    def ai_event(event: AIEvent, data: Dict[str, Any]) -> Dict[str, Any]:
+        return Protocol._base_message(
+            MessageType.AI_EVT,
+            {
+                "event": int(event),
+                "data": data,
+            },
+        )
 
-    # --- 공통 파서 (수신 측) ---
+
+    # =========================
+    # DB <-> Main PC2
+    # =========================
     @staticmethod
-    def parse_message(json_str):
-        """수신된 JSON 문자열을 딕셔너리로 변환 및 검증"""
+    def db_request(
+        action: DBAction,
+        data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return Protocol._base_message(
+            MessageType.DB_REQ,
+            {
+                "action": int(action),
+                "data": data,
+            },
+        )
+
+    @staticmethod
+    def db_response(
+        status: bool,
+        data: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = {"status": status}
+        if data is not None:
+            payload["data"] = data
+        if error:
+            payload["error"] = error
+
+        return Protocol._base_message(MessageType.DB_RES, payload)
+
+    # =========================
+    # UI <-> Main PC2
+    # =========================
+    @staticmethod
+    def ui_command(
+        command: UICommand,
+        content: Any,
+    ) -> Dict[str, Any]:
+        return Protocol._base_message(
+            MessageType.UI_CMD,
+            {
+                "command": int(command),
+                "content": content,
+            },
+        )
+
+    @staticmethod
+    def ui_event(
+        event: UIEvent,
+        data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return Protocol._base_message(
+            MessageType.UI_EVT,
+            {
+                "event": int(event),
+                "data": data,
+            },
+        )
+
+    # =========================
+    # Validation
+    # =========================
+    @staticmethod
+    def validate(message: Dict[str, Any]) -> bool:
         try:
-            data = json.loads(json_str)
-            if "header" in data and "payload" in data:
-                return data
-            return None
-        except json.JSONDecodeError:
-            return None
+            header = message["header"]
+            payload = message["payload"]
+
+            return (
+                isinstance(header, dict)
+                and isinstance(payload, dict)
+                and isinstance(header.get("type"), int)
+                and isinstance(header.get("version"), int)
+            )
+        except Exception:
+            return False

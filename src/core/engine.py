@@ -1,56 +1,92 @@
-import cv2
-from utils.image_proc import ImageProcessor # 영상 압축/해제 유틸
-from common.constants import DANGER_THRESHOLD_HIGH, DANGER_THRESHOLD_LOW
+# src/core/engine.py
+import time
+from typing import Dict, Any, Optional
+
+from common.constants import (
+    DANGER_THRESHOLD_HIGH,
+    DANGER_THRESHOLD_LOW,
+)
+
 
 class SmartCartEngine:
-    def __init__(self, obstacle_detector, product_recognizer, product_dao):
-        """
-        메인 서버로부터 필요한 모듈들을 주입받아 초기화
-        """
-        self.obstacle_detector = obstacle_detector
-        self.product_recognizer = product_recognizer
+    """
+    Business decision engine.
+    - Receives AI analysis results (JSON)
+    - Makes business decisions
+    - No networking, no AI inference
+    """
+
+    DUPLICATE_PRODUCT_INTERVAL_SEC = 2.0
+
+    def __init__(self, product_dao):
         self.product_dao = product_dao
-        self.last_detected_product = None
+        self._last_product_id: Optional[int] = None
+        self._last_product_ts: float = 0.0
 
-    def process_obstacle_frame(self, frame):
-        """
-        전방 영상 분석 엔진: 위험도에 따른 상태 판단
-        """
-        # AI 분석 호출
-        analysis = self.obstacle_detector.detect(frame)
-        danger_level = analysis.get('danger_level', 0)
+    # -------------------------
+    # Obstacle use case
+    # -------------------------
+    def process_obstacle_analysis(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        danger_level = analysis.get("danger_level", 0)
+        objects = analysis.get("objects", [])
 
-        # 비즈니스 로직: 위험도에 따른 메시지 결정
-        status = "NORMAL"
-        if danger_level >= DANGER_THRESHOLD_HIGH:
-            status = "CRITICAL_DANGER"
-        elif danger_level >= DANGER_THRESHOLD_LOW:
-            status = "CAUTION"
+        status = self._map_danger_level_to_status(danger_level)
 
         return {
+            "event": "OBSTACLE_ANALYSIS",
             "status": status,
             "danger_level": danger_level,
-            "object_count": len(analysis.get('objects', []))
+            "object_count": len(objects),
         }
 
-    def process_product_frame(self, frame):
-        """
-        상품 스캔 엔진: 중복 인식 방지 및 DB 정보 결합
-        """
-        analysis = self.product_recognizer.recognize(frame)
-        
-        if analysis['status'] == 'detected':
-            p_id = analysis['product_id']
-            
-            # 동일 상품이 계속 인식되는 것을 방지 (간단한 로직)
-            if p_id != self.last_detected_product:
-                product_info = self.product_dao.get_product_by_id(p_id)
-                if product_info:
-                    self.last_detected_product = p_id
-                    return {"action": "ADD_TO_CART", "data": product_info}
-        
-        return {"action": "NONE"}
+    def _map_danger_level_to_status(self, danger_level: int) -> str:
+        if danger_level >= DANGER_THRESHOLD_HIGH:
+            return "CRITICAL_DANGER"
+        if danger_level >= DANGER_THRESHOLD_LOW:
+            return "CAUTION"
+        return "NORMAL"
 
-    def reset_session(self):
-        """세션 종료 시 데이터 초기화"""
-        self.last_detected_product = None
+    # -------------------------
+    # Product use case
+    # -------------------------
+    def process_product_analysis(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        if analysis.get("status") != "detected":
+            return {"event": "NONE"}
+
+        product_id = analysis.get("product_id")
+        if not product_id:
+            return {"event": "NONE"}
+
+        if self._is_duplicate_product(product_id):
+            return {"event": "NONE"}
+
+        product_info = self.product_dao.get_product_by_id(product_id)
+        if not product_info:
+            return {
+                "event": "PRODUCT_NOT_FOUND",
+                "product_id": product_id,
+            }
+
+        self._mark_product_detected(product_id)
+
+        return {
+            "event": "ADD_TO_CART",
+            "product": product_info,
+        }
+
+    def _is_duplicate_product(self, product_id: int) -> bool:
+        now = time.time()
+        if self._last_product_id != product_id:
+            return False
+        return (now - self._last_product_ts) < self.DUPLICATE_PRODUCT_INTERVAL_SEC
+
+    def _mark_product_detected(self, product_id: int) -> None:
+        self._last_product_id = product_id
+        self._last_product_ts = time.time()
+
+    # -------------------------
+    # Session control
+    # -------------------------
+    def reset_session(self) -> None:
+        self._last_product_id = None
+        self._last_product_ts = 0.0
