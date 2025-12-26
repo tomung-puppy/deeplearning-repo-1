@@ -8,6 +8,8 @@ from network.tcp_client import TCPClient
 from core.engine import SmartCartEngine
 from database.db_handler import DBHandler
 from database.product_dao import ProductDAO
+from database.transaction_dao import TransactionDAO
+from database.obstacle_log_dao import ObstacleLogDAO
 from common.constants import (
     UDP_PORT_FRONT_CAM,
     UDP_PORT_CART_CAM,
@@ -22,6 +24,7 @@ from common.protocols import (
     AIEvent,
     DangerLevel,
     UICommand,
+    UIRequest
 )
 from utils.logger import SystemLogger
 
@@ -45,11 +48,25 @@ class MainPC2Hub:
         # -------------------------
         self.db_handler = DBHandler(self.config["db"])
         self.product_dao = ProductDAO(self.db_handler)
+        self.tx_dao = TransactionDAO(self.db_handler)
+        self.obstacle_dao = ObstacleLogDAO(self.db_handler)
+
+        # -------------------------
+        # Session
+        # -------------------------
+        cart_code = self.config["network"]["cart"]["code"]
+        self.session_id = self.tx_dao.start_session(cart_code)
+        self.logger.log_event("SESSION", f"Session started: {self.session_id}")
 
         # -------------------------
         # Business Engine
         # -------------------------
-        self.engine = SmartCartEngine(self.product_dao)
+        self.engine = SmartCartEngine(
+            product_dao=self.product_dao,
+            transaction_dao=self.tx_dao,
+            obstacle_dao=self.obstacle_dao,
+            ui_client=self.ui_client,
+        )
 
         # -------------------------
         # UDP Receivers (PC3 → PC2)
@@ -86,6 +103,17 @@ class MainPC2Hub:
         )
 
         # -------------------------
+        # UI Request Server (TCP PULL)
+        # -------------------------
+        self.ui_request_server = TCPServer(
+            "0.0.0.0",
+            TCP_PORT_UI,
+            self.handle_ui_request,
+        )
+
+
+
+        # -------------------------
         # AI Event Server (TCP PUSH)
         # -------------------------
         self.ai_event_server = TCPServer(
@@ -120,6 +148,72 @@ class MainPC2Hub:
             self.cart_forwarder.send_frame(jpeg_bytes)
 
     # =========================
+    # UI Request Handler
+    # =========================
+    def handle_ui_request(self, message: dict) -> dict:
+        if not Protocol.validate(message):
+            return {"status": "ERROR", "reason": "Invalid protocol"}
+
+        if MessageType(message["header"]["type"]) != MessageType.UI_REQ:
+            return {"status": "IGNORED"}
+
+        cmd = UIRequest(message["payload"]["event"])
+
+        if cmd == UIRequest.START_SESSION:
+            return self._handle_ui_start()
+
+        if cmd == UIRequest.CHECKOUT:
+            return self._handle_ui_checkout()
+
+        return {"status": "UNKNOWN_CMD"}
+    
+    def _handle_ui_start(self) -> dict:
+        # 이미 세션이 있으면 무시
+        if self.session_id:
+            return {"status": "ALREADY_STARTED"}
+
+        cart_code = self.config["network"]["cart"]["code"]
+        self.session_id = self.tx_dao.start_session(cart_code)
+
+        self.logger.log_event(
+            "SESSION",
+            f"Session started by UI: {self.session_id}",
+        )
+
+        return {"status": "OK", "session_id": self.session_id}
+    
+    def _handle_ui_checkout(self) -> dict:
+        if not self.session_id:
+            return {"status": "NO_ACTIVE_SESSION"}
+
+        # 주문 생성
+        order_id = self.tx_dao.create_order(self.session_id)
+
+        # 세션 종료
+        self.tx_dao.close_session(self.session_id)
+
+        self.logger.log_event(
+            "SESSION",
+            f"Checkout completed: order_id={order_id}",
+        )
+
+        # UI에 완료 알림
+        msg = Protocol.ui_command(
+            UICommand.CHECKOUT_DONE,
+            {"order_id": order_id},
+        )
+        self.ui_client.send_request(msg)
+
+        # 세션 초기화
+        self.session_id = None
+        self.engine.reset()
+
+        return {"status": "OK", "order_id": order_id}
+
+
+
+
+    # =========================
     # AI Event Handler
     # =========================
     def handle_ai_event(self, message: dict) -> dict:
@@ -140,33 +234,11 @@ class MainPC2Hub:
         return {"status": "OK"}
 
     def _handle_obstacle(self, data: dict):
-        level = DangerLevel(data["level"])
-        if level == self.engine.last_obstacle_level:
-            return
+        self.engine.process_obstacle_event(data, self.session_id)
 
-        self.engine.last_obstacle_level = level
-
-        if level >= DangerLevel.CAUTION:
-            msg = Protocol.ui_command(
-                UICommand.SHOW_ALARM,
-                data,
-            )
-            self.ui_client.send_request(msg)
 
     def _handle_product(self, data: dict):
-        product_id = data["product_id"]
-        if not self.engine.handle_product_detected(product_id):
-            return
-
-        product = self.product_dao.get_product_by_id(product_id)
-        if not product:
-            return
-
-        msg = Protocol.ui_command(
-            UICommand.ADD_TO_CART,
-            product,
-        )
-        self.ui_client.send_request(msg)
+        self.engine.process_product_event(data, self.session_id)
 
     # =========================
     # Lifecycle
@@ -180,6 +252,11 @@ class MainPC2Hub:
         threading.Thread(
             target=self.forward_cart_cam,
             daemon=True,
+        ).start()
+
+        threading.Thread(
+        target=self.ui_request_server.start,
+        daemon=True,
         ).start()
 
         self.ai_event_server.start()

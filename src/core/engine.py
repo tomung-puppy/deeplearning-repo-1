@@ -1,92 +1,115 @@
 # src/core/engine.py
 import time
-from typing import Dict, Any, Optional
+from typing import Optional
 
-from common.constants import (
-    DANGER_THRESHOLD_HIGH,
-    DANGER_THRESHOLD_LOW,
-)
+from common.protocols import DangerLevel, Protocol, UICommand
+from database.obstacle_log_dao import ObstacleLogDAO
+from database.product_dao import ProductDAO
+from database.transaction_dao import TransactionDAO
+from network.tcp_client import TCPClient
 
 
 class SmartCartEngine:
     """
     Business decision engine.
-    - Receives AI analysis results (JSON)
-    - Makes business decisions
-    - No networking, no AI inference
+    - Encapsulates business logic for handling events.
+    - Processes data from AI events, interacts with the database, and sends commands to the UI.
     """
 
     DUPLICATE_PRODUCT_INTERVAL_SEC = 2.0
 
-    def __init__(self, product_dao):
+    def __init__(
+        self,
+        product_dao: ProductDAO,
+        transaction_dao: TransactionDAO,
+        obstacle_dao: ObstacleLogDAO,
+        ui_client: TCPClient,
+    ):
         self.product_dao = product_dao
+        self.tx_dao = transaction_dao
+        self.obstacle_dao = obstacle_dao
+        self.ui_client = ui_client
+
+        # State for obstacle danger level
+        self.last_obstacle_level: DangerLevel = DangerLevel.NORMAL
+
+        # State for product de-duplication
         self._last_product_id: Optional[int] = None
         self._last_product_ts: float = 0.0
 
-    # -------------------------
-    # Obstacle use case
-    # -------------------------
-    def process_obstacle_analysis(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        danger_level = analysis.get("danger_level", 0)
-        objects = analysis.get("objects", [])
+    def process_obstacle_event(self, data: dict, session_id: int):
+        """Processes an obstacle danger event from the AI."""
+        level = DangerLevel(data["level"])
 
-        status = self._map_danger_level_to_status(danger_level)
+        # 1. Log event to database
+        self.obstacle_dao.log_obstacle(
+            session_id=session_id,
+            object_type=data.get("object_type", "UNKNOWN"),
+            distance=data.get("distance"),
+            speed=data.get("speed"),
+            direction=data.get("direction"),
+            is_warning=level >= DangerLevel.CAUTION,
+        )
 
-        return {
-            "event": "OBSTACLE_ANALYSIS",
-            "status": status,
-            "danger_level": danger_level,
-            "object_count": len(objects),
-        }
+        # 2. Avoid sending duplicate events
+        if level == self.last_obstacle_level:
+            return
+        self.last_obstacle_level = level
 
-    def _map_danger_level_to_status(self, danger_level: int) -> str:
-        if danger_level >= DANGER_THRESHOLD_HIGH:
-            return "CRITICAL_DANGER"
-        if danger_level >= DANGER_THRESHOLD_LOW:
-            return "CAUTION"
-        return "NORMAL"
+        # 3. Send warning to UI if danger level is high enough
+        if level >= DangerLevel.CAUTION:
+            msg = Protocol.ui_command(
+                UICommand.SHOW_ALARM,
+                data,
+            )
+            self.ui_client.send_request(msg)
 
-    # -------------------------
-    # Product use case
-    # -------------------------
-    def process_product_analysis(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
-        if analysis.get("status") != "detected":
-            return {"event": "NONE"}
+    def process_product_event(self, data: dict, session_id: int):
+        """Processes a product detection event from the AI."""
+        product_id = data["product_id"]
 
-        product_id = analysis.get("product_id")
-        if not product_id:
-            return {"event": "NONE"}
+        # 1. Debounce product detection
+        if not self._is_new_product_detection(product_id):
+            return
 
-        if self._is_duplicate_product(product_id):
-            return {"event": "NONE"}
+        # 2. Get product details from DB
+        product = self.product_dao.get_product_by_id(product_id)
+        if not product:
+            print(f"[Engine] WARN: Product with ID {product_id} not found in database.")
+            return
 
-        product_info = self.product_dao.get_product_by_id(product_id)
-        if not product_info:
-            return {
-                "event": "PRODUCT_NOT_FOUND",
-                "product_id": product_id,
-            }
+        # 3. Add item to cart in DB
+        self.tx_dao.add_cart_item(
+            session_id=session_id,
+            product_id=product_id,
+            quantity=1,
+        )
 
-        self._mark_product_detected(product_id)
+        # 4. Send command to UI to update cart
+        msg = Protocol.ui_command(
+            UICommand.ADD_TO_CART,
+            product,
+        )
+        self.ui_client.send_request(msg)
 
-        return {
-            "event": "ADD_TO_CART",
-            "product": product_info,
-        }
-
-    def _is_duplicate_product(self, product_id: int) -> bool:
+    def _is_new_product_detection(self, product_id: int) -> bool:
+        """Internal helper to check for duplicate product detections."""
         now = time.time()
-        if self._last_product_id != product_id:
+
+        is_duplicate = (
+            self._last_product_id == product_id and
+            (now - self._last_product_ts) < self.DUPLICATE_PRODUCT_INTERVAL_SEC
+        )
+
+        if is_duplicate:
             return False
-        return (now - self._last_product_ts) < self.DUPLICATE_PRODUCT_INTERVAL_SEC
 
-    def _mark_product_detected(self, product_id: int) -> None:
         self._last_product_id = product_id
-        self._last_product_ts = time.time()
+        self._last_product_ts = now
+        return True
 
-    # -------------------------
-    # Session control
-    # -------------------------
-    def reset_session(self) -> None:
+    def reset(self) -> None:
+        """Resets the engine's session state."""
+        self.last_obstacle_level = DangerLevel.NORMAL
         self._last_product_id = None
         self._last_product_ts = 0.0

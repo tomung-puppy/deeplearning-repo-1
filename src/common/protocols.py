@@ -9,11 +9,15 @@ from typing import Any, Dict, Optional
 class MessageType(IntEnum):
     AI_REQ = 1
     AI_RES = 2
-    DB_REQ = 3
-    DB_RES = 4
-    UI_CMD = 5
-    UI_EVT = 6
-    AI_EVT = 7 
+    AI_EVT = 3
+
+    UI_REQ = 10
+    UI_CMD = 11
+    UI_EVT = 12
+
+    DB_REQ = 20
+    DB_RES = 21
+
 
 
 class AITask(IntEnum):
@@ -25,17 +29,18 @@ class UICommand(IntEnum):
     SHOW_ALARM = 1
     ADD_TO_CART = 2
     UPDATE_STATUS = 3
+    CHECKOUT_DONE = 4
 
 
-class UIEvent(IntEnum):
-    CART_UPDATED = 1
-    SESSION_END = 2
+class UIRequest(IntEnum):
+    START_SESSION = 1
+    CHECKOUT = 2
 
 
 class DBAction(IntEnum):
     GET_PRODUCT = 1
     ADD_CART_ITEM = 2
-    GET_CART = 3
+    GET_CART = 3 #    CART_CLEARED = 3
 
 class AIEvent(IntEnum):
     OBSTACLE_DANGER = 1
@@ -112,6 +117,35 @@ class Protocol:
             },
         )
 
+    # =========================
+    # UI
+    # =========================
+    @staticmethod
+    def ui_command(
+        command: UICommand,
+        content: Any,
+    ) -> Dict[str, Any]:
+        return Protocol._base_message(
+            MessageType.UI_CMD,
+            {
+                "command": int(command),
+                "content": content,
+            },
+        )
+
+    @staticmethod
+    def ui_request(
+        request: UIRequest,
+        data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return Protocol._base_message(
+            MessageType.UI_REQ,
+            {
+                "event": int(request),
+                "data": data,
+            },
+        )
+
 
     # =========================
     # DB <-> Main PC2
@@ -143,34 +177,7 @@ class Protocol:
 
         return Protocol._base_message(MessageType.DB_RES, payload)
 
-    # =========================
-    # UI <-> Main PC2
-    # =========================
-    @staticmethod
-    def ui_command(
-        command: UICommand,
-        content: Any,
-    ) -> Dict[str, Any]:
-        return Protocol._base_message(
-            MessageType.UI_CMD,
-            {
-                "command": int(command),
-                "content": content,
-            },
-        )
 
-    @staticmethod
-    def ui_event(
-        event: UIEvent,
-        data: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        return Protocol._base_message(
-            MessageType.UI_EVT,
-            {
-                "event": int(event),
-                "data": data,
-            },
-        )
 
     # =========================
     # Validation
@@ -181,11 +188,13 @@ class Protocol:
             header = message["header"]
             payload = message["payload"]
 
+            MessageType(header["type"])
+
             return (
                 isinstance(header, dict)
                 and isinstance(payload, dict)
                 and isinstance(header.get("type"), int)
-                and isinstance(header.get("version"), int)
+                and header["version"] == Protocol.VERSION
             )
         except Exception:
             return False

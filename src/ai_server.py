@@ -7,7 +7,7 @@ import numpy as np
 from network.udp_handler import UDPFrameReceiver
 from network.tcp_server import TCPServer
 from network.tcp_client import TCPClient
-from common.protocol import (
+from common.protocols import (
     Protocol,
     MessageType,
     AITask,

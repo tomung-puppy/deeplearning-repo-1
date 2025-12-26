@@ -1,38 +1,118 @@
-import mysql.connector
-from mysql.connector import pooling
-import logging
+import pymysql
+from typing import Any, Optional, Sequence
+
 
 class DBHandler:
-    _instance = None
-    _pool = None
+    """
+    MySQL Database Handler
 
-    def __new__(cls, config=None):
-        """싱글톤 패턴을 사용하여 하나의 커넥션 풀만 유지"""
-        if cls._instance is None:
-            cls._instance = super(DBHandler, cls).__new__(cls)
-            if config:
-                cls._instance._init_pool(config)
-        return cls._instance
+    - Connection management
+    - Transaction handling
+    - Dict-based cursor
+    """
 
-    def _init_pool(self, config):
-        """AWS RDS 접속 정보로 커넥션 풀 초기화"""
-        try:
-            self._pool = pooling.MySQLConnectionPool(
-                pool_name="cart_pool",
-                pool_size=10,  # 동시 접속 대응을 위한 풀 크기
-                host=config['host'],
-                port=config.get('port', 3306),
-                user=config['user'],
-                password=config['password'],
-                database=config['database']
+    def __init__(self, config: dict):
+        """
+        config example:
+        {
+            "host": "localhost",
+            "port": 3306,
+            "user": "smartcart",
+            "password": "password",
+            "database": "smart_cart",
+            "charset": "utf8mb4"
+        }
+        """
+        self.config = config
+        self._conn = None
+
+    # =========================
+    # Connection
+    # =========================
+    def _get_connection(self):
+        if self._conn is None or not self._conn.open:
+            self._conn = pymysql.connect(
+                host=self.config["host"],
+                port=self.config.get("port", 3306),
+                user=self.config["user"],
+                password=self.config["password"],
+                database=self.config["database"],
+                charset=self.config.get("charset", "utf8mb4"),
+                cursorclass=pymysql.cursors.DictCursor,
+                autocommit=False,  # 명시적 commit
             )
-            print("DB Connection Pool initialized successfully.")
-        except mysql.connector.Error as e:
-            logging.error(f"Error creating connection pool: {e}")
+        return self._conn
+
+    # =========================
+    # Execute (INSERT / UPDATE / DELETE)
+    # =========================
+    def execute(
+        self,
+        sql: str,
+        params: Optional[Sequence[Any]] = None,
+        commit: bool = True,
+    ) -> int:
+        """
+        Execute write query
+
+        :return: affected rows
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                affected = cursor.execute(sql, params)
+            if commit:
+                conn.commit()
+            return affected
+        except Exception:
+            conn.rollback()
             raise
 
-    def get_connection(self):
-        """풀에서 가용한 커넥션 하나를 반환"""
-        if self._pool:
-            return self._pool.get_connection()
-        return None
+    # =========================
+    # Fetch one
+    # =========================
+    def fetch_one(
+        self,
+        sql: str,
+        params: Optional[Sequence[Any]] = None,
+    ) -> Optional[dict]:
+        conn = self._get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchone()
+
+    # =========================
+    # Fetch all
+    # =========================
+    def fetch_all(
+        self,
+        sql: str,
+        params: Optional[Sequence[Any]] = None,
+    ) -> list[dict]:
+        conn = self._get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+
+    # =========================
+    # Transaction control
+    # =========================
+    def begin(self):
+        conn = self._get_connection()
+        conn.begin()
+
+    def commit(self):
+        conn = self._get_connection()
+        conn.commit()
+
+    def rollback(self):
+        conn = self._get_connection()
+        conn.rollback()
+
+    # =========================
+    # Close
+    # =========================
+    def close(self):
+        if self._conn:
+            self._conn.close()
+            self._conn = None

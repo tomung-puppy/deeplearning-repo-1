@@ -10,10 +10,13 @@ DEFAULT_PC2_IP = "192.168.0.20"
 DEFAULT_PC3_IP = "192.168.0.30"
 
 # Ports
-TCP_PORT_AI = 5000         # PC1: AI Inference Server
+AI_UDP_PORT_FRONT = 5000         # PC1: AI Inference Server
+AI_UDP_PORT_CART = 5001
 UDP_PORT_FRONT_CAM = 6000  # PC2: Main Hub (Front Camera Stream)
 UDP_PORT_CART_CAM = 6001   # PC2: Main Hub (Cart Camera Stream)
+TCP_PORT_MAIN_EVT =6002
 TCP_PORT_UI = 7000         # PC3: Dashboard UI Command Server
+
 
 # --- System Status Codes ---
 STATUS_IDLE = 0

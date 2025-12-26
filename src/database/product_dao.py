@@ -1,27 +1,56 @@
-import mysql.connector
+# database/product_dao.py
+from typing import Optional, Dict, List
+
 
 class ProductDAO:
+    """
+    Product Master Data Access Object
+    """
+
     def __init__(self, db_handler):
-        self.db_handler = db_handler
+        self.db = db_handler
 
-    def get_product_by_id(self, product_id):
-        """상품 ID로 이름과 가격 조회"""
-        query = "SELECT product_name, price FROM products WHERE product_id = %s"
-        conn = self.db_handler.get_connection()
-        cursor = conn.cursor(dictionary=True) # 결과를 딕셔너리 형태로 반환
+    # =========================
+    # Product Queries
+    # =========================
+    def get_product_by_id(self, product_id: int) -> Optional[Dict]:
+        sql = """
+        SELECT
+            p.product_id,
+            p.name,
+            p.price,
+            p.stock_quantity,
+            p.image_url,
+            c.category_id,
+            c.name AS category_name
+        FROM products p
+        JOIN categories c ON p.category_id = c.category_id
+        WHERE p.product_id = %s
+        """
+        return self.db.fetch_one(sql, (product_id,))
 
-        try:
-            cursor.execute(query, (product_id,))
-            result = cursor.fetchone()
-            return result # {'product_name': 'Apple', 'price': 1500}
-        except mysql.connector.Error as e:
-            print(f"Query Error: {e}")
-            return None
-        finally:
-            cursor.close()
-            conn.close() # 커넥션을 풀로 반납
+    def list_products_by_category(self, category_id: int) -> List[Dict]:
+        sql = """
+        SELECT product_id, name, price, stock_quantity
+        FROM products
+        WHERE category_id = %s
+        ORDER BY name
+        """
+        return self.db.fetch_all(sql, (category_id,))
 
-    def check_inventory(self, product_id):
-        """재고 확인 (선택 기능)"""
-        query = "SELECT stock_quantity FROM products WHERE product_id = %s"
-        # ... 구현 로직 동일
+    # =========================
+    # Stock Management
+    # =========================
+    def decrease_stock(self, product_id: int, quantity: int) -> bool:
+        """
+        Decrease stock when purchase confirmed
+        """
+        sql = """
+        UPDATE products
+        SET stock_quantity = stock_quantity - %s,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE product_id = %s
+          AND stock_quantity >= %s
+        """
+        affected = self.db.execute(sql, (quantity, product_id, quantity))
+        return affected == 1

@@ -1,105 +1,232 @@
+# ui/dashboard.py
+
 import sys
-import cv2
-import json
-from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QTextEdit
-from PyQt6.QtCore import QThread, pyqtSignal, Qt
-from PyQt6.QtGui import QImage, QPixmap
-from network.udp_handler import UDPHandler
-from network.tcp_server import TCPServer
+from enum import Enum
+from typing import Dict, List
 
-# 1. 영상 수신을 위한 스레드 (UDP)
-class VideoThread(QThread):
-    change_pixmap_signal = pyqtSignal(np.ndarray)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QHBoxLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QFrame,
+)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 
-    def __init__(self, port):
+
+class DangerLevel(Enum):
+    NORMAL = 0
+    CAUTION = 1
+    CRITICAL = 2
+
+
+class LEDWidget(QFrame):
+    """
+    Simple LED indicator widget
+    """
+
+    def __init__(self, size: int = 60):
         super().__init__()
-        self.udp_handler = UDPHandler('0.0.0.0', port)
+        self.setFixedSize(size, size)
+        self.setStyleSheet(
+            "background-color: green; border-radius: 30px;"
+        )
 
-    def run(self):
-        # PC2가 보낸 프레임을 수신하여 UI로 전달
-        for frame in self.udp_handler.receive_frame():
-            self.change_pixmap_signal.emit(frame)
+    def set_level(self, level: DangerLevel):
+        color_map = {
+            DangerLevel.NORMAL: "green",
+            DangerLevel.CAUTION: "yellow",
+            DangerLevel.CRITICAL: "red",
+        }
+        color = color_map[level]
+        self.setStyleSheet(
+            f"background-color: {color}; border-radius: 30px;"
+        )
 
-# 2. 메인 대시보드 클래스
-class Dashboard(QMainWindow):
+
+class CartDashboard(QMainWindow):
+    """
+    Cart Dashboard UI (PyQt6)
+
+    UI only:
+    - Shows cart items
+    - Shows total price
+    - Shows obstacle danger LED
+    - Emits button events (start / end)
+    """
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Smart Shopping Cart - User Interface")
-        self.resize(1000, 700)
-        
-        self.init_ui()
-        
-        # PC2로부터 명령(알람, 상품정보)을 받기 위한 TCP 서버 시작
-        self.tcp_receiver = TCPServer('0.0.0.0', 7000, self.handle_server_command)
-        self.tcp_thread = QThread()
-        self.tcp_receiver.moveToThread(self.tcp_thread)
-        self.tcp_thread.started.connect(self.tcp_receiver.start)
-        self.tcp_thread.start()
 
-        # 카메라 스레드 시작 (전방뷰 6000, 카트뷰 6001 포트 가정)
-        self.front_cam_thread = VideoThread(6000)
-        self.front_cam_thread.change_pixmap_signal.connect(self.update_front_image)
-        self.front_cam_thread.start()
+        self.setWindowTitle("AI Smart Cart Dashboard")
+        self.setFixedSize(900, 600)
 
-    def init_ui(self):
-        """UI 레이아웃 초기화"""
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        self.main_layout = QHBoxLayout(self.central_widget)
+        # -------------------------
+        # State
+        # -------------------------
+        self.cart_items: List[Dict] = []
+        self.total_price: int = 0
 
-        # 왼쪽: 카메라 뷰 섹션
-        self.video_layout = QVBoxLayout()
-        self.front_label = QLabel("Front View (Obstacle Detection)")
-        self.front_label.setFixedSize(640, 360)
-        self.front_label.setStyleSheet("background-color: black; color: white;")
-        self.video_layout.addWidget(self.front_label)
-        
-        # 알람 메시지 표시줄
-        self.alarm_label = QLabel("Status: Normal")
-        self.alarm_label.setStyleSheet("font-size: 20px; font-weight: bold; color: green;")
-        self.video_layout.addWidget(self.alarm_label)
-        
-        self.main_layout.addLayout(self.video_layout)
+        # -------------------------
+        # UI
+        # -------------------------
+        self._build_ui()
 
-        # 오른쪽: 장바구니 리스트 섹션
-        self.cart_layout = QVBoxLayout()
-        self.cart_label = QLabel("🛒 Shopping Cart Items")
-        self.cart_display = QTextEdit()
-        self.cart_display.setReadOnly(True)
-        self.cart_layout.addWidget(self.cart_label)
-        self.cart_layout.addWidget(self.cart_display)
-        
-        self.main_layout.addLayout(self.cart_layout)
+    # =========================
+    # UI setup
+    # =========================
+    def _build_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
 
-    def update_front_image(self, cv_img):
-        """수신된 OpenCV 이미지를 QLabel에 표시"""
-        qt_img = self.convert_cv_to_qt(cv_img)
-        self.front_label.setPixmap(qt_img)
+        main_layout = QVBoxLayout()
+        central.setLayout(main_layout)
 
-    def convert_cv_to_qt(self, cv_img):
-        rgb_image = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
-        h, w, ch = rgb_image.shape
-        bytes_per_line = ch * w
-        convert_to_Qt_format = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-        return QPixmap.fromImage(convert_to_Qt_format)
+        # -------------------------
+        # Header
+        # -------------------------
+        header = QHBoxLayout()
 
-    def handle_server_command(self, request):
-        """PC2(메인)에서 온 명령 처리"""
-        cmd = request.get('cmd')
-        
-        if cmd == 'SHOW_ALARM':
-            self.alarm_label.setText(f"⚠️ {request['message']}")
-            self.alarm_label.setStyleSheet("font-size: 20px; font-weight: bold; color: red;")
-        
-        elif cmd == 'ADD_CART':
-            data = request['data']
-            item_info = f"- {data['product_name']}: {data['price']}원\n"
-            self.cart_display.append(item_info)
-            
-        return {"status": "success"}
+        title = QLabel("🛒 AI Smart Cart")
+        title.setStyleSheet("font-size: 22px; font-weight: bold;")
+        header.addWidget(title)
+
+        header.addStretch()
+
+        self.status_label = QLabel("Status: READY")
+        self.status_label.setStyleSheet("font-size: 14px;")
+        header.addWidget(self.status_label)
+
+        main_layout.addLayout(header)
+
+        # -------------------------
+        # Body
+        # -------------------------
+        body = QHBoxLayout()
+
+        # Cart table
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(
+            ["Product", "Price", "Qty"]
+        )
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+
+        body.addWidget(self.table, stretch=3)
+
+        # Right panel
+        right = QVBoxLayout()
+
+        # LED
+        led_title = QLabel("Obstacle Status")
+        led_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        led_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        right.addWidget(led_title)
+
+        self.led = LEDWidget()
+        right.addWidget(self.led, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # Total
+        total_title = QLabel("Total Price")
+        total_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        total_title.setStyleSheet("font-size: 16px; font-weight: bold;")
+        right.addWidget(total_title)
+
+        self.total_label = QLabel("₩ 0")
+        self.total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.total_label.setStyleSheet("font-size: 20px; font-weight: bold;")
+        right.addWidget(self.total_label)
+
+        right.addStretch()
+        body.addLayout(right, stretch=1)
+
+        main_layout.addLayout(body)
+
+        # -------------------------
+        # Footer
+        # -------------------------
+        footer = QHBoxLayout()
+
+        self.start_btn = QPushButton("Start Cart")
+        self.end_btn = QPushButton("End Cart")
+
+        footer.addWidget(self.start_btn)
+        footer.addWidget(self.end_btn)
+        footer.addStretch()
+
+        main_layout.addLayout(footer)
+
+    # =========================
+    # Public API (Controller uses these)
+    # =========================
+    def add_product(self, product: Dict):
+        """
+        product = {
+            product_id,
+            name,
+            price
+        }
+        """
+        for item in self.cart_items:
+            if item["product_id"] == product["product_id"]:
+                item["quantity"] += 1
+                self._refresh_table()
+                return
+
+        self.cart_items.append(
+            {
+                "product_id": product["product_id"],
+                "name": product["name"],
+                "price": product["price"],
+                "quantity": 1,
+            }
+        )
+        self._refresh_table()
+
+    def set_danger_level(self, level: DangerLevel):
+        self.led.set_level(level)
+
+    def set_status(self, status: str):
+        self.status_label.setText(f"Status: {status}")
+
+    def reset_cart(self):
+        self.cart_items.clear()
+        self._refresh_table()
+
+    # =========================
+    # Internal
+    # =========================
+    def _refresh_table(self):
+        self.table.setRowCount(0)
+        self.total_price = 0
+
+        for item in self.cart_items:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            self.table.setItem(
+                row, 0, QTableWidgetItem(item["name"])
+            )
+            self.table.setItem(
+                row, 1, QTableWidgetItem(f"₩ {item['price']}")
+            )
+            self.table.setItem(
+                row, 2, QTableWidgetItem(str(item["quantity"]))
+            )
+
+            self.total_price += item["price"] * item["quantity"]
+
+        self.total_label.setText(f"₩ {self.total_price}")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = Dashboard()
+    window = CartDashboard()
     window.show()
     sys.exit(app.exec())
