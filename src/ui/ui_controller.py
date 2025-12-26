@@ -7,13 +7,13 @@ import json
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from ui.dashboard import CartDashboard, DangerLevel
+from common.config import config
 from common.protocols import (
     Protocol,
     MessageType,
     UICommand,
     UIRequest,
 )
-from common.constants import TCP_PORT_UI
 
 
 class UIEventSignals(QObject):
@@ -38,6 +38,8 @@ class UIController:
     def __init__(self, dashboard: CartDashboard, main_pc2_ip: str):
         self.dashboard = dashboard
         self.main_pc2_ip = main_pc2_ip
+        if config is None:
+            raise RuntimeError("Configuration could not be loaded. Exiting.")
 
         self.signals = UIEventSignals()
         self._bind_signals()
@@ -91,21 +93,25 @@ class UIController:
 
     def _send_to_main(self, message: dict):
         try:
+            # Connect to the main hub's UI request port
+            port = config.network.pc2_main.ui_port
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((self.main_pc2_ip, TCP_PORT_UI))
+                s.connect((self.main_pc2_ip, port))
                 s.sendall(json.dumps(message).encode())
         except Exception as e:
-            print(f"[UI] Send error: {e}")
+            print(f"[UI] Send error to {self.main_pc2_ip}:{port}: {e}")
 
     # =========================
     # TCP Server (MainPC2 → UI)
     # =========================
     def _tcp_server_loop(self):
+        # Listen on the UI's designated command port
+        port = config.network.pc3_ui.ui_port
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("0.0.0.0", TCP_PORT_UI))
+        sock.bind(("0.0.0.0", port))
         sock.listen(5)
 
-        print("[UI] TCP server listening")
+        print(f"[UI] TCP server listening for commands on port {port}")
 
         while True:
             conn, _ = sock.accept()
@@ -118,7 +124,11 @@ class UIController:
     def _handle_message(self, raw: bytes):
         try:
             message = Protocol.parse(raw.decode())
-        except Exception:
+        except ValueError as e:
+            print(f"[UI] Error parsing message: {e}")
+            return
+        except Exception as e:
+            print(f"[UI] An unexpected error occurred: {e}")
             return
 
         if MessageType(message["header"]["type"]) != MessageType.UI_CMD:

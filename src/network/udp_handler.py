@@ -26,8 +26,8 @@ class UDPFrameSender:
     - Sends over UDP
     """
 
-    def __init__(self, target_ip: str, target_port: int, jpeg_quality: int = 80):
-        self.addr = (target_ip, target_port)
+    def __init__(self, host: str, port: int, jpeg_quality: int = 80):
+        self.addr = (host, port)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.jpeg_quality = jpeg_quality
         self._frame_id = 0

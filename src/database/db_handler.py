@@ -68,6 +68,29 @@ class DBHandler:
             conn.rollback()
             raise
 
+    def insert(
+        self,
+        sql: str,
+        params: Optional[Sequence[Any]] = None,
+        commit: bool = True,
+    ) -> int:
+        """
+        Execute an INSERT query and return the new auto-incremented ID.
+        
+        :return: The last inserted row ID.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                last_id = cursor.lastrowid
+            if commit:
+                conn.commit()
+            return last_id
+        except Exception:
+            conn.rollback()
+            raise
+
     # =========================
     # Fetch one
     # =========================

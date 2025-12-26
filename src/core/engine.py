@@ -45,9 +45,9 @@ class SmartCartEngine:
         self.obstacle_dao.log_obstacle(
             session_id=session_id,
             object_type=data.get("object_type", "UNKNOWN"),
-            distance=data.get("distance"),
-            speed=data.get("speed"),
-            direction=data.get("direction"),
+            distance=data.get("distance", 1000),
+            speed=data.get("speed", 0),
+            direction=data.get("direction", "stop"),
             is_warning=level >= DangerLevel.CAUTION,
         )
 

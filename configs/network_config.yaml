@@ -1,14 +1,32 @@
-# 네트워크 구성 설정
+# ==================================================
+# Central Network Configuration
+# ==================================================
+# Defines IPs and Ports for all services.
+# Using 127.0.0.1 for all IPs to facilitate local testing.
+
+# PC1: AI Inference Server
 pc1_ai:
-  ip: "192.168.0.10" # AI 서버 실제 IP
-  port: 5000         # TCP 분석 요청용
+  ip: "127.0.0.1"
+  # PC1 listens on these UDP ports for video streams from the Main Hub
+  udp_port_front: 5000
+  udp_port_cart: 5001
 
+# PC2: Main Hub Server
 pc2_main:
-  ip: "192.168.0.20" # 메인 서버 실제 IP
-  tcp_port: 8000     # 제어용
-  udp_port_front: 6000 # 전방 카메라 영상 수신용
-  udp_port_cart: 6001  # 카트 카메라 영상 수신용
+  ip: "127.0.0.1"
+  cart_code: 1
+  # PC2 listens on this TCP port for events from the AI Server
+  event_port: 6002
+  # PC2 listens on this TCP port for requests from the UI
+  ui_port: 7000
+  # PC2 listens on these UDP ports for video from the Cart (PC3)
+  udp_front_cam_port: 6000
+  udp_cart_cam_port: 6001
 
+# PC3: UI Dashboard
 pc3_ui:
-  ip: "192.168.0.30" # 쇼핑카트 대시보드 IP
-  port: 7000         # 알람 및 상품정보 수신용 (TCP)
+  ip: "127.0.0.1"
+  # PC3 listens on this TCP port for commands from the Main Hub.
+  # NOTE: This is the same port PC2 uses to listen for UI requests.
+  # This configuration assumes PC2 and PC3 are on different machines.
+  ui_port: 7000

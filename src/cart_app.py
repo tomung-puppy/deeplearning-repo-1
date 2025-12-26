@@ -3,13 +3,7 @@ import time
 import threading
 
 from network.udp_handler import UDPFrameSender
-from common.constants import (
-    PC2_IP,
-    UDP_PORT_FRONT_CAM,
-    UDP_PORT_CART_CAM,
-    IMG_WIDTH,
-    IMG_HEIGHT,
-)
+from common.config import config
 from utils.image_proc import ImageProcessor
 
 
@@ -21,17 +15,29 @@ class CartEdgeApp:
     """
 
     def __init__(self):
+        if config is None:
+            raise RuntimeError("Configuration could not be loaded. Exiting.")
+
+        # Get config values
+        main_hub_ip = config.network.pc2_main.ip
+        front_cam_port = config.network.pc2_main.udp_front_cam_port
+        cart_cam_port = config.network.pc2_main.udp_cart_cam_port
+        
+        # Camera resolution and FPS
+        self.img_width, self.img_height = config.app.camera.resolution
+        self.fps = config.app.camera.fps
+
         # -------------------------
         # UDP Senders (port = meaning)
         # -------------------------
         self.front_sender = UDPFrameSender(
-            PC2_IP,
-            UDP_PORT_FRONT_CAM,
+            main_hub_ip,
+            front_cam_port,
             jpeg_quality=80,
         )
         self.cart_sender = UDPFrameSender(
-            PC2_IP,
-            UDP_PORT_CART_CAM,
+            main_hub_ip,
+            cart_cam_port,
             jpeg_quality=85,
         )
 
@@ -56,7 +62,7 @@ class CartEdgeApp:
         cap: cv2.VideoCapture,
         sender: UDPFrameSender,
         resize_shape: tuple,
-        fps: float = 30.0,
+        fps: float,
         name: str = "",
     ):
         interval = 1.0 / fps
@@ -78,8 +84,8 @@ class CartEdgeApp:
         self._stream_camera(
             cap=self.front_cap,
             sender=self.front_sender,
-            resize_shape=(IMG_WIDTH, IMG_HEIGHT),
-            fps=30.0,
+            resize_shape=(self.img_width, self.img_height),
+            fps=self.fps,
             name="Front",
         )
 
@@ -88,8 +94,8 @@ class CartEdgeApp:
         self._stream_camera(
             cap=self.cart_cap,
             sender=self.cart_sender,
-            resize_shape=(IMG_WIDTH, IMG_HEIGHT),
-            fps=30.0,
+            resize_shape=(self.img_width, self.img_height),
+            fps=self.fps,
             name="Cart",
         )
 

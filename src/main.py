@@ -1,6 +1,5 @@
 import threading
 import time
-import yaml
 
 from network.udp_handler import UDPFrameReceiver, UDPFrameSender
 from network.tcp_server import TCPServer
@@ -10,19 +9,11 @@ from database.db_handler import DBHandler
 from database.product_dao import ProductDAO
 from database.transaction_dao import TransactionDAO
 from database.obstacle_log_dao import ObstacleLogDAO
-from common.constants import (
-    UDP_PORT_FRONT_CAM,
-    UDP_PORT_CART_CAM,
-    AI_UDP_PORT_FRONT,
-    AI_UDP_PORT_CART,
-    TCP_PORT_UI,
-    TCP_PORT_MAIN_EVT,
-)
+from common.config import config
 from common.protocols import (
     Protocol,
     MessageType,
     AIEvent,
-    DangerLevel,
     UICommand,
     UIRequest
 )
@@ -41,22 +32,24 @@ class MainPC2Hub:
 
     def __init__(self):
         self.logger = SystemLogger(name="MainHub")
-        self.config = self._load_config()
+        if config is None:
+            raise RuntimeError("Configuration could not be loaded. Exiting.")
 
         # -------------------------
         # Database
         # -------------------------
-        self.db_handler = DBHandler(self.config["db"])
+        self.db_handler = DBHandler(config.db.aws_rds.dict())
         self.product_dao = ProductDAO(self.db_handler)
         self.tx_dao = TransactionDAO(self.db_handler)
         self.obstacle_dao = ObstacleLogDAO(self.db_handler)
-
+        
         # -------------------------
-        # Session
+        # UI Client (for sending commands to UI)
         # -------------------------
-        cart_code = self.config["network"]["cart"]["code"]
-        self.session_id = self.tx_dao.start_session(cart_code)
-        self.logger.log_event("SESSION", f"Session started: {self.session_id}")
+        self.ui_client = TCPClient(
+            host=config.network.pc3_ui.ip,
+            port=config.network.pc3_ui.ui_port,
+        )
 
         # -------------------------
         # Business Engine
@@ -69,70 +62,66 @@ class MainPC2Hub:
         )
 
         # -------------------------
-        # UDP Receivers (PC3 → PC2)
+        # Session
         # -------------------------
-        self.front_receiver = UDPFrameReceiver(
-            "0.0.0.0",
-            UDP_PORT_FRONT_CAM,
-        )
-        self.cart_receiver = UDPFrameReceiver(
-            "0.0.0.0",
-            UDP_PORT_CART_CAM,
-        )
+        cart_code = config.network.pc2_main.cart_code
+        try:
+            self.session_id = self.tx_dao.start_session(cart_code)
+            self.logger.log_event("SESSION", f"Session started with cart_code {cart_code}: session_id={self.session_id}")
+        except Exception as e:
+            self.logger.log_event("ERROR", f"Failed to start initial session for cart {cart_code}: {e}")
+            raise RuntimeError(f"MainPC2Hub cannot start without a valid session.") from e
+
 
         # -------------------------
         # UDP Forwarders (PC2 → AI)
         # -------------------------
-        ai_ip = self.config["network"]["pc1_ai"]["ip"]
-
+        ai_ip = config.network.pc1_ai.ip
         self.front_forwarder = UDPFrameSender(
-            ai_ip,
-            AI_UDP_PORT_FRONT,
+            host=ai_ip,
+            port=config.network.pc1_ai.udp_front_port,
         )
         self.cart_forwarder = UDPFrameSender(
-            ai_ip,
-            AI_UDP_PORT_CART,
+            host=ai_ip,
+            port=config.network.pc1_ai.udp_cart_port,
         )
 
         # -------------------------
-        # UI Client
+        # UDP Receivers (from a hypothetical PC3)
+        # We need to define ports for PC2 to listen on
+        # These are not in the current network config, so we'll use temporary ports
+        # This highlights a gap in the config design.
         # -------------------------
-        self.ui_client = TCPClient(
-            self.config["network"]["pc3_ui"]["ip"],
-            TCP_PORT_UI,
+        self.front_receiver = UDPFrameReceiver(
+            "0.0.0.0",
+            config.network.pc2_main.udp_front_cam_port,
         )
+        self.cart_receiver = UDPFrameReceiver(
+            "0.0.0.0",
+            config.network.pc2_main.udp_cart_cam_port,
+        )
+        # self.logger.log_event("WARN", "Using placeholder UDP receiver ports (9000, 9001)")
+
 
         # -------------------------
-        # UI Request Server (TCP PULL)
+        # UI Request Server (TCP PULL from UI)
         # -------------------------
         self.ui_request_server = TCPServer(
-            "0.0.0.0",
-            TCP_PORT_UI,
-            self.handle_ui_request,
+            host="0.0.0.0",
+            port=config.network.pc2_main.ui_port,
+            handler=self.handle_ui_request,
         )
 
-
-
         # -------------------------
-        # AI Event Server (TCP PUSH)
+        # AI Event Server (TCP PUSH from AI)
         # -------------------------
         self.ai_event_server = TCPServer(
-            "0.0.0.0",
-            TCP_PORT_MAIN_EVT,
-            self.handle_ai_event,
+            host="0.0.0.0",
+            port=config.network.pc2_main.event_port,
+            handler=self.handle_ai_event,
         )
 
-        self.logger.log_event("SYSTEM", "Main PC2 Hub initialized")
-
-    # =========================
-    # Config
-    # =========================
-    def _load_config(self) -> dict:
-        with open("configs/db_config.yaml", "r") as f:
-            db_cfg = yaml.safe_load(f)
-        with open("configs/network_config.yaml", "r") as f:
-            net_cfg = yaml.safe_load(f)
-        return {"db": db_cfg, "network": net_cfg}
+        self.logger.log_event("SYSTEM", f"Main PC2 Hub initialized, listening for AI events on port {config.network.pc2_main.event_port}")
 
     # =========================
     # UDP Forwarding Loops
@@ -172,39 +161,57 @@ class MainPC2Hub:
         if self.session_id:
             return {"status": "ALREADY_STARTED"}
 
-        cart_code = self.config["network"]["cart"]["code"]
-        self.session_id = self.tx_dao.start_session(cart_code)
-
-        self.logger.log_event(
-            "SESSION",
-            f"Session started by UI: {self.session_id}",
-        )
-
-        return {"status": "OK", "session_id": self.session_id}
+        cart_code = config.network.pc2_main.cart_code
+        try:
+            self.session_id = self.tx_dao.start_session(cart_code)
+            self.logger.log_event(
+                "SESSION",
+                f"Session started by UI: {self.session_id}",
+            )
+            return {"status": "OK", "session_id": self.session_id}
+        except Exception as e:
+            self.logger.log_event("ERROR", f"UI-initiated session failed for cart {cart_code}: {e}")
+            return {"status": "ERROR", "reason": "Failed to start session"}
     
     def _handle_ui_checkout(self) -> dict:
         if not self.session_id:
             return {"status": "NO_ACTIVE_SESSION"}
 
-        # 주문 생성
-        order_id = self.tx_dao.create_order(self.session_id)
+        # 1. Get all cart items from the database for the current session
+        cart_items = self.tx_dao.list_cart_items(self.session_id)
+        if not cart_items:
+            # Handle empty cart checkout? For now, we proceed.
+            self.logger.log_event("SESSION", "Checkout initiated for an empty cart.")
+            total_amount = 0
+            total_items = 0
+        else:
+            # 2. Calculate total amount and item count
+            total_amount = sum(item['total_price'] for item in cart_items)
+            total_items = sum(item['quantity'] for item in cart_items)
 
-        # 세션 종료
-        self.tx_dao.close_session(self.session_id)
+        # 3. Create the order with the calculated totals
+        order_id = self.tx_dao.create_order(
+            session_id=self.session_id,
+            total_amount=total_amount,
+            total_items=total_items
+        )
+
+        # 4. End the session
+        self.tx_dao.end_session(self.session_id)
 
         self.logger.log_event(
             "SESSION",
-            f"Checkout completed: order_id={order_id}",
+            f"Checkout completed: order_id={order_id}, total_amount={total_amount}, total_items={total_items}",
         )
 
-        # UI에 완료 알림
+        # 5. Notify the UI
         msg = Protocol.ui_command(
             UICommand.CHECKOUT_DONE,
-            {"order_id": order_id},
+            {"order_id": order_id, "total_amount": total_amount},
         )
         self.ui_client.send_request(msg)
 
-        # 세션 초기화
+        # 6. Reset session state
         self.session_id = None
         self.engine.reset()
 

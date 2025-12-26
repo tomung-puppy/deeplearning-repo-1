@@ -1,0 +1,88 @@
+# src/common/config.py
+import yaml
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+
+from pydantic import BaseModel, Field
+
+
+# --- Pydantic Models for Type-Safe Configs ---
+
+class CameraConfig(BaseModel):
+    resolution: List[int]
+    fps: int
+
+class LoggingConfig(BaseModel):
+    level: str
+    file_path: str
+
+class AppConfig(BaseModel):
+    camera: CameraConfig
+    logging: LoggingConfig
+
+class DbConfig(BaseModel):
+    aws_rds: Dict[str, Any]
+
+class DetectorConfig(BaseModel):
+    weights: str
+    confidence: float
+    iou_threshold: Optional[float] = None
+    danger_threshold_low: Optional[float] = None
+    danger_threshold_high: Optional[float] = None
+
+class ModelConfig(BaseModel):
+    obstacle_detector: DetectorConfig
+    product_recognizer: DetectorConfig
+
+class PcConfig(BaseModel):
+    ip: str
+    cart_code: Optional[int] = None
+    event_port: Optional[int] = None
+    ui_port: Optional[int] = None
+    udp_front_port: Optional[int] = None
+    udp_cart_port: Optional[int] = None
+    udp_front_cam_port: Optional[int] = None
+    udp_cart_cam_port: Optional[int] = None
+
+class NetworkConfig(BaseModel):
+    pc1_ai: PcConfig
+    pc2_main: PcConfig
+    pc3_ui: PcConfig
+
+# --- Main Config Class ---
+
+class Config(BaseModel):
+    """
+    A unified, type-safe configuration object that loads all YAML configs.
+    """
+    app: AppConfig
+    db: DbConfig
+    model: ModelConfig
+    network: NetworkConfig
+
+    @classmethod
+    def load_from_dir(cls, path: str = "configs") -> "Config":
+        """
+        Loads all .yaml files from a directory and merges them into a single Config object.
+        """
+        config_dir = Path(path)
+        if not config_dir.is_dir():
+            raise FileNotFoundError(f"Configuration directory not found: {config_dir}")
+
+        all_configs = {}
+        for config_file in config_dir.glob("*.yaml"):
+            config_name = config_file.stem.replace("_config", "")
+            with open(config_file, "r") as f:
+                all_configs[config_name] = yaml.safe_load(f)
+        
+        return cls.parse_obj(all_configs)
+
+# --- Singleton Instance ---
+# Create a single config instance to be used throughout the application
+try:
+    config = Config.load_from_dir()
+except Exception as e:
+    print(f"FATAL: Could not load configuration. Error: {e}")
+    # Provide a dummy config object to avoid import errors on initial startup
+    # In a real app, you might exit or have a more robust fallback.
+    config = None

@@ -19,7 +19,8 @@ class TransactionDAO:
         INSERT INTO shopping_sessions (cart_id, start_time, status)
         VALUES (%s, NOW(), 'ACTIVE')
         """
-        return self.db.insert(sql, (cart_id,))
+        session_id = self.db.insert(sql, (cart_id,))
+        return session_id 
 
     def end_session(self, session_id: int) -> None:
         sql = """

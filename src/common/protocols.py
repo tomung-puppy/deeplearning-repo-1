@@ -1,4 +1,5 @@
 import time
+import json
 from enum import IntEnum
 from typing import Any, Dict, Optional
 
@@ -178,10 +179,27 @@ class Protocol:
         return Protocol._base_message(MessageType.DB_RES, payload)
 
 
+    # =========================
+    # Parsing & Validation
+    # =========================
+    @staticmethod
+    def parse(raw_json: str) -> Dict[str, Any]:
+        """
+        Parses and validates a JSON message string.
+        
+        :raises ValueError: If JSON is malformed or protocol validation fails.
+        :return: The parsed message as a dictionary.
+        """
+        try:
+            message = json.loads(raw_json)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON format: {e}")
 
-    # =========================
-    # Validation
-    # =========================
+        if not Protocol.validate(message):
+            raise ValueError("Message failed protocol validation.")
+        
+        return message
+
     @staticmethod
     def validate(message: Dict[str, Any]) -> bool:
         try:
