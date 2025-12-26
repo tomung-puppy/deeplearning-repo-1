@@ -92,9 +92,9 @@ class UIController:
         self.dashboard.set_status("CHECKOUT")
 
     def _send_to_main(self, message: dict):
+        port = config.network.pc2_main.ui_port
         try:
             # Connect to the main hub's UI request port
-            port = config.network.pc2_main.ui_port
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((self.main_pc2_ip, port))
                 s.sendall(json.dumps(message).encode())

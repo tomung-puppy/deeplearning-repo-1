@@ -12,3 +12,6 @@ pyyaml
 
 # System
 requests
+
+pydantic
+pymysql

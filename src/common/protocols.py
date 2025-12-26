@@ -170,7 +170,8 @@ class Protocol:
         data: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
     ) -> Dict[str, Any]:
-        payload = {"status": status}
+        payload : Dict[str, Any] = {"status": status}
+        
         if data is not None:
             payload["data"] = data
         if error:

@@ -38,7 +38,7 @@ class MainPC2Hub:
         # -------------------------
         # Database
         # -------------------------
-        self.db_handler = DBHandler(config.db.aws_rds.dict())
+        self.db_handler = DBHandler(config.db.aws_rds)
         self.product_dao = ProductDAO(self.db_handler)
         self.tx_dao = TransactionDAO(self.db_handler)
         self.obstacle_dao = ObstacleLogDAO(self.db_handler)
@@ -241,10 +241,14 @@ class MainPC2Hub:
         return {"status": "OK"}
 
     def _handle_obstacle(self, data: dict):
+        if self.session_id is None:
+            return
         self.engine.process_obstacle_event(data, self.session_id)
 
 
     def _handle_product(self, data: dict):
+        if self.session_id is None:
+            return
         self.engine.process_product_event(data, self.session_id)
 
     # =========================

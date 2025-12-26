@@ -111,7 +111,7 @@ class DBHandler:
         self,
         sql: str,
         params: Optional[Sequence[Any]] = None,
-    ) -> list[dict]:
+    ) ->  Sequence[dict[str, Any]]:
         conn = self._get_connection()
         with conn.cursor() as cursor:
             cursor.execute(sql, params)

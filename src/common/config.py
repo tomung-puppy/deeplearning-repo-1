@@ -36,13 +36,13 @@ class ModelConfig(BaseModel):
 
 class PcConfig(BaseModel):
     ip: str
-    cart_code: Optional[int] = None
-    event_port: Optional[int] = None
-    ui_port: Optional[int] = None
-    udp_front_port: Optional[int] = None
-    udp_cart_port: Optional[int] = None
-    udp_front_cam_port: Optional[int] = None
-    udp_cart_cam_port: Optional[int] = None
+    cart_code: int
+    event_port: int
+    ui_port: int
+    udp_front_port: int
+    udp_cart_port: int
+    udp_front_cam_port: int
+    udp_cart_cam_port: int
 
 class NetworkConfig(BaseModel):
     pc1_ai: PcConfig
@@ -75,7 +75,7 @@ class Config(BaseModel):
             with open(config_file, "r") as f:
                 all_configs[config_name] = yaml.safe_load(f)
         
-        return cls.parse_obj(all_configs)
+        return cls.model_validate(all_configs)
 
 # --- Singleton Instance ---
 # Create a single config instance to be used throughout the application

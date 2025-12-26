@@ -87,12 +87,6 @@ class UDPFrameReceiver:
 
         self._frames: Dict[int, Dict] = {}
 
-    def receive_frames(self) -> Generator[np.ndarray, None, None]:
-        while True:
-            packet, _ = self.sock.recvfrom(MAX_UDP_PACKET_SIZE)
-            frame = self._handle_packet(packet)
-            if frame is not None:
-                yield frame
 
     def receive_packets(self) -> Generator[bytes, None, None]:
         """

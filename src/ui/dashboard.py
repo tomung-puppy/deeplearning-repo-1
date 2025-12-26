@@ -115,7 +115,9 @@ class CartDashboard(QMainWindow):
         self.table.setHorizontalHeaderLabels(
             ["Product", "Price", "Qty"]
         )
-        self.table.horizontalHeader().setStretchLastSection(True)
+        table_header = self.table.horizontalHeader()
+        assert table_header is not None
+        table_header.setStretchLastSection(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
         body.addWidget(self.table, stretch=3)
