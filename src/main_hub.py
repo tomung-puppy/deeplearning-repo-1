@@ -72,7 +72,6 @@ class MainPC2Hub:
             self.logger.log_event("ERROR", f"Failed to start initial session for cart {cart_code}: {e}")
             raise RuntimeError(f"MainPC2Hub cannot start without a valid session.") from e
 
-
         # -------------------------
         # UDP Forwarders (PC2 → AI)
         # -------------------------
@@ -216,8 +215,6 @@ class MainPC2Hub:
         self.engine.reset()
 
         return {"status": "OK", "order_id": order_id}
-
-
 
 
     # =========================

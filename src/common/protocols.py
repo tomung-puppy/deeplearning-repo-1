@@ -19,8 +19,6 @@ class MessageType(IntEnum):
     DB_REQ = 20
     DB_RES = 21
 
-
-
 class AITask(IntEnum):
     OBSTACLE = 1
     PRODUCT = 2
@@ -32,11 +30,9 @@ class UICommand(IntEnum):
     UPDATE_STATUS = 3
     CHECKOUT_DONE = 4
 
-
 class UIRequest(IntEnum):
     START_SESSION = 1
     CHECKOUT = 2
-
 
 class DBAction(IntEnum):
     GET_PRODUCT = 1
@@ -51,9 +47,6 @@ class DangerLevel(IntEnum):
     NORMAL = 0
     CAUTION = 1
     CRITICAL = 2
-
-
-
 
 # =========================
 # Protocol
