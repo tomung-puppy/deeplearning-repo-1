@@ -14,8 +14,8 @@ WEIGHTS_NAME = "best.pt"
 ROOT_DIR = Path(__file__).resolve().parents[2]
 RUNS_DIR = ROOT_DIR / "test" / "yw" / "runs" / "train"
 WEIGHTS_PATH = RUNS_DIR / PROJECT_NAME / RUN_NAME / "weights" / WEIGHTS_NAME
-
-# Source: can be a directory, a single image file, or a video file.
+#WEIGHTS_PATH = ROOT_DIR / "yw" / "runs" /WEIGHTS_NAME
+# Source for image prediction
 SOURCE_DIR = ROOT_DIR / "test" / "yw" / "data" / "inference" / "input"
 # Directory to save prediction results.
 OUTPUT_DIR = ROOT_DIR / "test" / "yw" / "data" / "inference" / "output"
@@ -28,7 +28,7 @@ def predict_on_images():
     Loads a trained model and runs predictions on images in the source directory.
     Saves the results (images with boxes and text files with coordinates).
     """
-    print("--- Running Inference ---")
+    print("--- Running Inference on Images ---")
 
     # --- 1. Check for model and source ---
     if not WEIGHTS_PATH.exists():
@@ -65,36 +65,92 @@ def predict_on_images():
     print("-" * 30)
 
     try:
-        results = model.predict(
+        model.predict(
             source=str(SOURCE_DIR),
             conf=CONFIDENCE_THRESHOLD,
-            # Control what is saved
-            save=True,      # Save images with bounding boxes
-            save_txt=True,  # Save results in a .txt file per image
-            save_conf=True, # Include confidence scores in the .txt file
-            # Specify output directory
-            project=str(OUTPUT_DIR.parent), # The parent of the 'name' folder
-            name=OUTPUT_DIR.name,           # The final folder name
-            exist_ok=True, # Overwrite previous results in the output folder
+            save=True,
+            save_txt=True,
+            save_conf=True,
+            project=str(OUTPUT_DIR.parent),
+            name=OUTPUT_DIR.name,
+            exist_ok=True,
             device=device,
         )
 
-        # The predict function above saves automatically. 
-        # This part is just for confirmation message.
-        # Note: The file structure from `predict` can be a bit nested.
-        # It usually saves into `.../output/predict/`
         output_subfolder = OUTPUT_DIR / "predict"
         if not output_subfolder.exists():
-            # In some ultralytics versions, it might just be the name.
             output_subfolder = OUTPUT_DIR
             
         print("\n--- Prediction Complete ---")
         print(f"Results saved in: {output_subfolder}")
         print("- Images with detections are saved as .jpg files.")
-        print("- Detection features (class, confidence, OBB coordinates) are in the 'labels' sub-directory as .txt files.")
+        print("- Detection features are in the 'labels' sub-directory as .txt files.")
 
     except Exception as e:
         print(f"\nAn error occurred during prediction: {e}")
 
+def predict_on_webcam():
+    """
+    Loads a trained model and runs real-time object detection on a webcam feed.
+    Press 'q' in the display window to quit.
+    """
+    print("--- Starting Webcam Inference ---")
+    print("Press 'q' in the display window to quit.")
+
+    # --- 1. Check for model ---
+    if not WEIGHTS_PATH.exists():
+        print(f"Error: Model weights not found at '{WEIGHTS_PATH}'")
+        print("Please ensure your training run paths are correct.")
+        return
+
+    # --- 2. Load the model ---
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"Using device: {device}")
+
+    try:
+        model = YOLO(WEIGHTS_PATH)
+    except Exception as e:
+        print(f"Error loading model from '{WEIGHTS_PATH}'.")
+        print(f"Underlying error: {e}")
+        return
+
+    # --- 3. Run Real-time Prediction ---
+    print(f"Loading model: {WEIGHTS_PATH}")
+    print("Starting webcam feed...")
+    print("-" * 30)
+
+    try:
+        # stream=True is efficient for video feeds.
+        # show=True displays the output window.
+        results = model.predict(
+            source='0',  # '0' is the default webcam
+            conf=CONFIDENCE_THRESHOLD,
+            stream=True,
+            show=True,
+            device=device
+        )
+        
+        # Iterate through the generator to process the stream
+        for _ in results:
+            # The loop runs for each frame. 'show=True' handles the display.
+            # You can add custom logic here to process results per frame.
+            pass
+
+    except Exception as e:
+        print(f"\nAn error occurred during webcam prediction: {e}")
+    
+    print("--- Webcam feed stopped. ---")
+
 if __name__ == "__main__":
-    predict_on_images()
+    print("Choose prediction source:")
+    print("1: Images from a folder")
+    print("2: Live Webcam Feed")
+    
+    choice = input("Enter your choice (1 or 2): ")
+
+    if choice == '1':
+        predict_on_images()
+    elif choice == '2':
+        predict_on_webcam()
+    else:
+        print("Invalid choice. Please run the script again and enter '1' or '2'.")

@@ -70,7 +70,11 @@ def parse_cvat_xml(xml_file, image_path):
     if not (image_width and image_height):
         # Fallback to reading image if dimensions are not in XML
         img = cv2.imread(str(image_path))
-        image_height, image_width, _ = img.shape
+        if img is not None:
+            image_height, image_width, _ = img.shape
+        else:
+            print("Image is not loaded")
+            return 0, 0, 0
 
     for image_tag in root.findall("image"):
         for box in image_tag.findall("polygon"):

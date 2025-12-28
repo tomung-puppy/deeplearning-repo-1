@@ -39,6 +39,7 @@ class MainPC2Hub:
         # Database
         # -------------------------
         self.db_handler = DBHandler(config.db.aws_rds)
+        
         self.product_dao = ProductDAO(self.db_handler)
         self.tx_dao = TransactionDAO(self.db_handler)
         self.obstacle_dao = ObstacleLogDAO(self.db_handler)
