@@ -1,12 +1,15 @@
 from ultralytics import YOLO
 import cv2
+from common.config import config
 
 class ObstacleDetector:
-    def __init__(self, model_path='models/obstacle_detector/best.pt'):
+    def __init__(self, model_path=None):
         # YOLOv8/v11 모델 로드
+        if model_path is None:
+            model_path = config.model.obstacle_detector.weights if config else 'models/obstacle_detector/dummy.pt'
         self.model = YOLO(model_path)
         # 위험 감지 임계값 (Confidence)
-        self.threshold = 0.5 
+        self.threshold = config.model.obstacle_detector.confidence if config else 0.5 
 
     def detect(self, frame):
         """
