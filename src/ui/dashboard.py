@@ -191,6 +191,61 @@ class CartDashboard(QMainWindow):
         )
         self._refresh_table()
 
+    def update_cart_display(self, items: list, total: float):
+        """
+        Update cart display with full cart data from DB
+        items = [
+            {
+                product_id,
+                product_name,
+                price,
+                quantity,
+                subtotal
+            },
+            ...
+        ]
+        total = total price
+        """
+        print(f"[Dashboard] update_cart_display called: {len(items)} items, total={total}", flush=True)
+        
+        # 같은 상품을 product_id로 그룹화하고 수량 합산
+        grouped_items = {}
+        for item in items:
+            product_id = item["product_id"]
+            if product_id in grouped_items:
+                # 이미 있는 상품이면 수량만 증가
+                grouped_items[product_id]["quantity"] += item["quantity"]
+            else:
+                # 새로운 상품이면 추가
+                grouped_items[product_id] = {
+                    "product_name": item["product_name"],
+                    "price": item["price"],
+                    "quantity": item["quantity"]
+                }
+        
+        print(f"[Dashboard] Grouped into {len(grouped_items)} unique products", flush=True)
+        
+        # 테이블 초기화 후 그룹화된 항목 표시
+        self.table.setRowCount(0)
+        
+        for product_id, item in grouped_items.items():
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            self.table.setItem(
+                row, 0, QTableWidgetItem(item["product_name"])
+            )
+            self.table.setItem(
+                row, 1, QTableWidgetItem(f"₩ {item['price']}")
+            )
+            self.table.setItem(
+                row, 2, QTableWidgetItem(str(item["quantity"]))
+            )
+
+        self.total_price = total
+        self.total_label.setText(f"₩ {int(self.total_price)}")
+        print(f"[Dashboard] Cart display updated successfully", flush=True)
+
     def set_danger_level(self, level: DangerLevel):
         self.led.set_level(level)
 
