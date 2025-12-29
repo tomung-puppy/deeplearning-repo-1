@@ -7,7 +7,6 @@ CREATE TABLE `products` (
   `product_id` int PRIMARY KEY AUTO_INCREMENT COMMENT '상품 고유 ID',
   `category_id` int NOT NULL COMMENT '카테고리 ID',
   `name` varchar(100) NOT NULL COMMENT '상품명',
-  `image_url` varchar(255) COMMENT 'S3 저장된 상품 이미지 경로',
   `price` int NOT NULL COMMENT '개별 가격 (원화)',
   `stock_quantity` int NOT NULL COMMENT '현재 재고 수량',
   `updated_at` datetime NOT NULL DEFAULT (CURRENT_TIMESTAMP) COMMENT '정보 수정 일시'
@@ -68,7 +67,6 @@ CREATE TABLE `order_details` (
   `order_id` bigint NOT NULL COMMENT '주문 번호',
   `product_id` int NOT NULL COMMENT '상품 ID',
   `snap_price` int NOT NULL COMMENT '구매 당시 가격',
-  `snap_img_url` varchar(255) COMMENT '구매 당시 상품 이미지'
 );
 
 CREATE INDEX `products_index_0` ON `products` (`category_id`);

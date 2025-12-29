@@ -15,6 +15,7 @@ class TransactionDAO:
     # Shopping Session
     # =========================
     def start_session(self, cart_id: int) -> int:
+        """Start new cart session"""
         sql = """
         INSERT INTO shopping_sessions (cart_id, start_time, status)
         VALUES (%s, NOW(), 'ACTIVE')
@@ -59,16 +60,19 @@ class TransactionDAO:
         self.db.execute(sql, (session_id, product_id, quantity))
 
     def list_cart_items(self, session_id: int) -> List[Dict]:
+        """Get all items in cart with product info"""
         sql = """
         SELECT
+            ci.item_id,
             ci.product_id,
-            p.name,
-            ci.quantity,
+            p.name as product_name,
             p.price,
-            (ci.quantity * p.price) AS total_price
+            ci.quantity,
+            (ci.quantity * p.price) AS subtotal
         FROM cart_items ci
         JOIN products p ON ci.product_id = p.product_id
         WHERE ci.session_id = %s
+        ORDER BY ci.added_at DESC
         """
         return self.db.fetch_all(sql, (session_id,))
 
