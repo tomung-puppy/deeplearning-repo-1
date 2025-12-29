@@ -22,6 +22,7 @@ print("=" * 60)
 
 processes = []
 
+
 def cleanup(signum=None, frame=None):
     """모든 프로세스 종료"""
     print("\n\n종료 중...")
@@ -36,6 +37,7 @@ def cleanup(signum=None, frame=None):
     print("모든 프로세스 종료 완료")
     sys.exit(0)
 
+
 # Ctrl+C 핸들러
 signal.signal(signal.SIGINT, cleanup)
 signal.signal(signal.SIGTERM, cleanup)
@@ -49,11 +51,11 @@ try:
         cwd=PROJECT_ROOT,
         stdout=ai_log,
         stderr=subprocess.STDOUT,
-        text=True
+        text=True,
     )
     processes.append(("AI Server", ai_proc))
     time.sleep(3)
-    
+
     if ai_proc.poll() is not None:
         ai_log.close()
         with open(PROJECT_ROOT / "test_ai_server.log", "r") as f:
@@ -70,11 +72,11 @@ try:
         cwd=PROJECT_ROOT,
         stdout=hub_log,
         stderr=subprocess.STDOUT,
-        text=True
+        text=True,
     )
     processes.append(("Main Hub", hub_proc))
     time.sleep(3)
-    
+
     if hub_proc.poll() is not None:
         hub_log.close()
         with open(PROJECT_ROOT / "test_main_hub.log", "r") as f:
@@ -92,11 +94,11 @@ try:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        bufsize=1
+        bufsize=1,
     )
     processes.append(("Hybrid Camera", cam_proc))
     time.sleep(2)
-    
+
     if cam_proc.poll() is not None:
         print("  ✗ 카메라 앱 시작 실패!")
         output = cam_proc.stdout.read()
@@ -113,7 +115,7 @@ try:
         cwd=PROJECT_ROOT,
     )
     processes.append(("UI App", ui_proc))
-    
+
     print("\n" + "=" * 60)
     print("시스템 실행 중!")
     print("=" * 60)
@@ -123,7 +125,7 @@ try:
             print(f"  ✓ {name} (PID: {proc.pid})")
         else:
             print(f"  ✗ {name} (종료됨)")
-    
+
     print("\n" + "=" * 60)
     print("테스트 방법:")
     print("  1. UI 창이 열립니다")
@@ -136,10 +138,10 @@ try:
     print("  5. 카메라 창에서 'q' 키를 누르면 종료")
     print("=" * 60)
     print("\n종료하려면 Ctrl+C를 누르세요...")
-    
+
     # UI 프로세스가 종료될 때까지 대기
     ui_proc.wait()
-    
+
 except KeyboardInterrupt:
     pass
 finally:

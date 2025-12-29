@@ -535,7 +535,7 @@ def _product_inference_loop(self):
             if result.get("status") == "detected":
                 # barcode 또는 product_id 사용
                 identifier = result.get("barcode") or result.get("product_id")
-                confidence = result.get("confidence", 0.0)
+                confidence = resultmodels/product_recognizer/product_yolo8s.pt.get("confidence", 0.0)
                 
                 msg = Protocol.make_event(
                     event_type=AIEvent.PRODUCT_DETECTED,

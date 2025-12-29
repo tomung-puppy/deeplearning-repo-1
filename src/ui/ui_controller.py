@@ -20,6 +20,7 @@ class UIEventSignals(QObject):
     """
     Qt Signals to safely update UI from background threads
     """
+
     product_added = pyqtSignal(dict)
     danger_updated = pyqtSignal(int)
     status_changed = pyqtSignal(str)
@@ -56,34 +57,20 @@ class UIController:
     # Signal bindings
     # =========================
     def _bind_signals(self):
-        self.signals.product_added.connect(
-            self.dashboard.add_product
-        )
+        self.signals.product_added.connect(self.dashboard.add_product)
         self.signals.danger_updated.connect(
-            lambda lvl: self.dashboard.set_danger_level(
-                DangerLevel(lvl)
-            )
+            lambda lvl: self.dashboard.set_danger_level(DangerLevel(lvl))
         )
-        self.signals.status_changed.connect(
-            self.dashboard.set_status
-        )
-        self.signals.reset_cart.connect(
-            self.dashboard.reset_cart
-        )
-        self.signals.cart_updated.connect(
-            self.dashboard.update_cart_display
-        )
+        self.signals.status_changed.connect(self.dashboard.set_status)
+        self.signals.reset_cart.connect(self.dashboard.reset_cart)
+        self.signals.cart_updated.connect(self.dashboard.update_cart_display)
 
     # =========================
     # Button → MainPC2
     # =========================
     def _bind_buttons(self):
-        self.dashboard.start_btn.clicked.connect(
-            self._send_start
-        )
-        self.dashboard.end_btn.clicked.connect(
-            self._send_checkout
-        )
+        self.dashboard.start_btn.clicked.connect(self._send_start)
+        self.dashboard.end_btn.clicked.connect(self._send_checkout)
 
     def _send_start(self):
         msg = Protocol.ui_request(UIRequest.START_SESSION, {})
@@ -124,10 +111,11 @@ class UIController:
                 header = conn.recv(4)
                 if not header or len(header) != 4:
                     continue
-                
+
                 import struct
+
                 payload_length = struct.unpack(">I", header)[0]
-                
+
                 # Read the full payload
                 data = bytearray()
                 while len(data) < payload_length:
@@ -135,11 +123,11 @@ class UIController:
                     if not chunk:
                         break
                     data.extend(chunk)
-                
+
                 if len(data) < payload_length:
                     print(f"[UI] Incomplete message received", flush=True)
                     continue
-                
+
                 self._handle_message(bytes(data))
 
     def _handle_message(self, raw: bytes):
@@ -157,7 +145,7 @@ class UIController:
 
         payload = message["payload"]
         cmd = UICommand(payload["command"])
-        
+
         print(f"[UI] Received command: {cmd}", flush=True)
 
         if cmd == UICommand.ADD_TO_CART:
@@ -173,9 +161,7 @@ class UIController:
             self.signals.cart_updated.emit(items, total)
 
         elif cmd == UICommand.SHOW_ALARM:
-            self.signals.danger_updated.emit(
-                payload["content"]["level"]
-            )
+            self.signals.danger_updated.emit(payload["content"]["level"])
 
         elif cmd == UICommand.CHECKOUT_DONE:
             self.signals.reset_cart.emit()

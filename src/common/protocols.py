@@ -20,7 +20,6 @@ class MessageType(IntEnum):
     DB_RES = 21
 
 
-
 class AITask(IntEnum):
     OBSTACLE = 1
     PRODUCT = 2
@@ -42,18 +41,18 @@ class UIRequest(IntEnum):
 class DBAction(IntEnum):
     GET_PRODUCT = 1
     ADD_CART_ITEM = 2
-    GET_CART = 3 #    CART_CLEARED = 3
+    GET_CART = 3  #    CART_CLEARED = 3
+
 
 class AIEvent(IntEnum):
     OBSTACLE_DANGER = 1
     PRODUCT_DETECTED = 2
 
+
 class DangerLevel(IntEnum):
     NORMAL = 0
     CAUTION = 1
     CRITICAL = 2
-
-
 
 
 # =========================
@@ -108,7 +107,7 @@ class Protocol:
             payload["error"] = error
 
         return Protocol._base_message(MessageType.AI_RES, payload)
-    
+
     @staticmethod
     def ai_event(event: AIEvent, data: Dict[str, Any]) -> Dict[str, Any]:
         return Protocol._base_message(
@@ -148,7 +147,6 @@ class Protocol:
             },
         )
 
-
     # =========================
     # DB <-> Main PC2
     # =========================
@@ -171,15 +169,14 @@ class Protocol:
         data: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
     ) -> Dict[str, Any]:
-        payload : Dict[str, Any] = {"status": status}
-        
+        payload: Dict[str, Any] = {"status": status}
+
         if data is not None:
             payload["data"] = data
         if error:
             payload["error"] = error
 
         return Protocol._base_message(MessageType.DB_RES, payload)
-
 
     # =========================
     # Parsing & Validation
@@ -188,7 +185,7 @@ class Protocol:
     def parse(raw_json: str) -> Dict[str, Any]:
         """
         Parses and validates a JSON message string.
-        
+
         :raises ValueError: If JSON is malformed or protocol validation fails.
         :return: The parsed message as a dictionary.
         """
@@ -199,7 +196,7 @@ class Protocol:
 
         if not Protocol.validate(message):
             raise ValueError("Message failed protocol validation.")
-        
+
         return message
 
     @staticmethod

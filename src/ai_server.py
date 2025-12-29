@@ -49,9 +49,15 @@ class AIServer:
         # -------------------------
         # UDP receivers for frame data
         # -------------------------
-        self.obstacle_receiver = UDPFrameReceiver("0.0.0.0", config.network.pc1_ai.udp_port_front)
-        self.product_receiver = UDPFrameReceiver("0.0.0.0", config.network.pc1_ai.udp_port_cart)
-        print(f"UDP receivers listening on ports {config.network.pc1_ai.udp_port_front} and {config.network.pc1_ai.udp_port_cart}")
+        self.obstacle_receiver = UDPFrameReceiver(
+            "0.0.0.0", config.network.pc1_ai.udp_port_front
+        )
+        self.product_receiver = UDPFrameReceiver(
+            "0.0.0.0", config.network.pc1_ai.udp_port_cart
+        )
+        print(
+            f"UDP receivers listening on ports {config.network.pc1_ai.udp_port_front} and {config.network.pc1_ai.udp_port_cart}"
+        )
 
         # -------------------------
         # TCP client to push events to Main Hub
@@ -76,7 +82,9 @@ class AIServer:
         for jpeg_bytes in self.product_receiver.receive_packets():
             packet_count += 1
             if packet_count % 30 == 0:  # Every 30 frames
-                print(f"[AI Server] Received {packet_count} product frames, latest size: {len(jpeg_bytes)} bytes")
+                print(
+                    f"[AI Server] Received {packet_count} product frames, latest size: {len(jpeg_bytes)} bytes"
+                )
             with self._product_lock:
                 self._latest_product_bytes = jpeg_bytes
 
@@ -88,7 +96,7 @@ class AIServer:
         while True:
             with self._obstacle_lock:
                 jpeg = self._latest_obstacle_bytes
-            
+
             if jpeg is None:
                 time.sleep(0.1)
                 continue
@@ -103,15 +111,15 @@ class AIServer:
             # Push event if danger is detected. Debouncing is handled by the main hub's engine.
             if level >= DangerLevel.CAUTION:
                 self._push_event(AIEvent.OBSTACLE_DANGER, result)
-            
-            time.sleep(0.05) # Control inference frequency
+
+            time.sleep(0.05)  # Control inference frequency
 
     def _product_inference_loop(self):
         print("Product inference loop started.")
         while True:
             with self._product_lock:
                 jpeg = self._latest_product_bytes
-            
+
             if jpeg is None:
                 time.sleep(0.1)
                 continue
@@ -123,15 +131,22 @@ class AIServer:
             result = self.product_model.recognize(frame)
             product_id = result.get("product_id")
             confidence = result.get("confidence", 0.0)
-            
-            print(f"[AI Server] Product inference result: product_id={product_id}, confidence={confidence:.2f}, status={result.get('status')}")
+
+            print(
+                f"[AI Server] Product inference result: product_id={product_id}, confidence={confidence:.2f}, status={result.get('status')}"
+            )
 
             # Push event for every successful recognition. Debouncing is handled by the main hub's engine.
             if product_id is not None:
-                print(f"[AI Server] Pushing PRODUCT_DETECTED event: product_id={product_id}, confidence={confidence:.2f}")
-                self._push_event(AIEvent.PRODUCT_DETECTED, {"product_id": product_id, "confidence": confidence})
-            
-            time.sleep(0.1) # Control inference frequency
+                print(
+                    f"[AI Server] Pushing PRODUCT_DETECTED event: product_id={product_id}, confidence={confidence:.2f}"
+                )
+                self._push_event(
+                    AIEvent.PRODUCT_DETECTED,
+                    {"product_id": product_id, "confidence": confidence},
+                )
+
+            time.sleep(0.1)  # Control inference frequency
 
     # =========================
     # Utilities
@@ -169,7 +184,7 @@ class AIServer:
 
         for t in threads:
             t.start()
-        
+
         print("AI Server is running.")
         # Keep main thread alive
         for t in threads:

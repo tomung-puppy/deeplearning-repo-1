@@ -34,9 +34,7 @@ class LEDWidget(QFrame):
     def __init__(self, size: int = 60):
         super().__init__()
         self.setFixedSize(size, size)
-        self.setStyleSheet(
-            "background-color: green; border-radius: 30px;"
-        )
+        self.setStyleSheet("background-color: green; border-radius: 30px;")
 
     def set_level(self, level: DangerLevel):
         color_map = {
@@ -45,9 +43,7 @@ class LEDWidget(QFrame):
             DangerLevel.CRITICAL: "red",
         }
         color = color_map[level]
-        self.setStyleSheet(
-            f"background-color: {color}; border-radius: 30px;"
-        )
+        self.setStyleSheet(f"background-color: {color}; border-radius: 30px;")
 
 
 class CartDashboard(QMainWindow):
@@ -112,9 +108,7 @@ class CartDashboard(QMainWindow):
 
         # Cart table
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(
-            ["Product", "Price", "Qty"]
-        )
+        self.table.setHorizontalHeaderLabels(["Product", "Price", "Qty"])
         table_header = self.table.horizontalHeader()
         assert table_header is not None
         table_header.setStretchLastSection(True)
@@ -206,8 +200,11 @@ class CartDashboard(QMainWindow):
         ]
         total = total price
         """
-        print(f"[Dashboard] update_cart_display called: {len(items)} items, total={total}", flush=True)
-        
+        print(
+            f"[Dashboard] update_cart_display called: {len(items)} items, total={total}",
+            flush=True,
+        )
+
         # 같은 상품을 product_id로 그룹화하고 수량 합산
         grouped_items = {}
         for item in items:
@@ -220,27 +217,23 @@ class CartDashboard(QMainWindow):
                 grouped_items[product_id] = {
                     "product_name": item["product_name"],
                     "price": item["price"],
-                    "quantity": item["quantity"]
+                    "quantity": item["quantity"],
                 }
-        
-        print(f"[Dashboard] Grouped into {len(grouped_items)} unique products", flush=True)
-        
+
+        print(
+            f"[Dashboard] Grouped into {len(grouped_items)} unique products", flush=True
+        )
+
         # 테이블 초기화 후 그룹화된 항목 표시
         self.table.setRowCount(0)
-        
+
         for product_id, item in grouped_items.items():
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            self.table.setItem(
-                row, 0, QTableWidgetItem(item["product_name"])
-            )
-            self.table.setItem(
-                row, 1, QTableWidgetItem(f"₩ {item['price']}")
-            )
-            self.table.setItem(
-                row, 2, QTableWidgetItem(str(item["quantity"]))
-            )
+            self.table.setItem(row, 0, QTableWidgetItem(item["product_name"]))
+            self.table.setItem(row, 1, QTableWidgetItem(f"₩ {item['price']}"))
+            self.table.setItem(row, 2, QTableWidgetItem(str(item["quantity"])))
 
         self.total_price = total
         self.total_label.setText(f"₩ {int(self.total_price)}")
@@ -267,15 +260,9 @@ class CartDashboard(QMainWindow):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            self.table.setItem(
-                row, 0, QTableWidgetItem(item["name"])
-            )
-            self.table.setItem(
-                row, 1, QTableWidgetItem(f"₩ {item['price']}")
-            )
-            self.table.setItem(
-                row, 2, QTableWidgetItem(str(item["quantity"]))
-            )
+            self.table.setItem(row, 0, QTableWidgetItem(item["name"]))
+            self.table.setItem(row, 1, QTableWidgetItem(f"₩ {item['price']}"))
+            self.table.setItem(row, 2, QTableWidgetItem(str(item["quantity"])))
 
             self.total_price += item["price"] * item["quantity"]
 

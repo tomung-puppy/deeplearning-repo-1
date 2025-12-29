@@ -21,7 +21,7 @@ class TransactionDAO:
         VALUES (%s, NOW(), 'ACTIVE')
         """
         session_id = self.db.insert(sql, (cart_id,))
-        return session_id 
+        return session_id
 
     def end_session(self, session_id: int) -> None:
         sql = """
@@ -75,7 +75,6 @@ class TransactionDAO:
         ORDER BY ci.added_at DESC
         """
         return self.db.fetch_all(sql, (session_id,))
-
 
     # =========================
     # Order / Checkout
