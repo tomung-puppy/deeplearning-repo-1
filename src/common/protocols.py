@@ -31,6 +31,7 @@ class UICommand(IntEnum):
     ADD_TO_CART = 2
     UPDATE_STATUS = 3
     CHECKOUT_DONE = 4
+    UPDATE_CART = 5
 
 
 class UIRequest(IntEnum):
