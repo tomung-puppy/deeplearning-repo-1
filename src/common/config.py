@@ -1,9 +1,14 @@
 # src/common/config.py
 import yaml
+import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+from dotenv import load_dotenv
 
 from pydantic import BaseModel, Field
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 # --- Pydantic Models for Type-Safe Configs ---
@@ -34,20 +39,27 @@ class ModelConfig(BaseModel):
     obstacle_detector: DetectorConfig
     product_recognizer: DetectorConfig
 
-class PcConfig(BaseModel):
+class PC1Config(BaseModel):
+    ip: str
+    udp_port_front: int
+    udp_port_cart: int
+
+class PC2Config(BaseModel):
     ip: str
     cart_code: int
     event_port: int
     ui_port: int
-    udp_front_port: int
-    udp_cart_port: int
     udp_front_cam_port: int
     udp_cart_cam_port: int
 
+class PC3Config(BaseModel):
+    ip: str
+    ui_port: int
+
 class NetworkConfig(BaseModel):
-    pc1_ai: PcConfig
-    pc2_main: PcConfig
-    pc3_ui: PcConfig
+    pc1_ai: PC1Config
+    pc2_main: PC2Config
+    pc3_ui: PC3Config
 
 # --- Main Config Class ---
 
@@ -64,6 +76,7 @@ class Config(BaseModel):
     def load_from_dir(cls, path: str = "configs") -> "Config":
         """
         Loads all .yaml files from a directory and merges them into a single Config object.
+        Environment variables from .env file are automatically substituted in YAML values.
         """
         config_dir = Path(path)
         if not config_dir.is_dir():
@@ -73,7 +86,10 @@ class Config(BaseModel):
         for config_file in config_dir.glob("*.yaml"):
             config_name = config_file.stem.replace("_config", "")
             with open(config_file, "r") as f:
-                all_configs[config_name] = yaml.safe_load(f)
+                content = f.read()
+                # Replace environment variables in format ${VAR_NAME}
+                content = os.path.expandvars(content)
+                all_configs[config_name] = yaml.safe_load(content)
         
         return cls.model_validate(all_configs)
 
