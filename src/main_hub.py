@@ -79,11 +79,11 @@ class MainPC2Hub:
         ai_ip = config.network.pc1_ai.ip
         self.front_forwarder = UDPFrameSender(
             host=ai_ip,
-            port=config.network.pc1_ai.udp_front_port,
+            port=config.network.pc1_ai.udp_port_front,
         )
         self.cart_forwarder = UDPFrameSender(
             host=ai_ip,
-            port=config.network.pc1_ai.udp_cart_port,
+            port=config.network.pc1_ai.udp_port_cart,
         )
 
         # -------------------------
@@ -129,12 +129,12 @@ class MainPC2Hub:
     def forward_front_cam(self):
         self.logger.log_event("NET", "Front cam forwarding started")
         for jpeg_bytes in self.front_receiver.receive_packets():
-            self.front_forwarder.send_frame(jpeg_bytes)
+            self.front_forwarder.send_frame_raw(jpeg_bytes)
 
     def forward_cart_cam(self):
         self.logger.log_event("NET", "Cart cam forwarding started")
         for jpeg_bytes in self.cart_receiver.receive_packets():
-            self.cart_forwarder.send_frame(jpeg_bytes)
+            self.cart_forwarder.send_frame_raw(jpeg_bytes)
 
     # =========================
     # UI Request Handler

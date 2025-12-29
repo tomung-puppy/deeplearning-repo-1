@@ -34,6 +34,14 @@ class UDPFrameSender:
 
     def send_frame(self, frame) -> None:
         encoded = self._encode_frame(frame)
+        self._send_encoded(encoded)
+    
+    def send_frame_raw(self, jpeg_bytes: bytes) -> None:
+        """Send already-encoded JPEG bytes directly"""
+        self._send_encoded(jpeg_bytes)
+    
+    def _send_encoded(self, encoded: bytes) -> None:
+        """Internal method to send encoded bytes"""
         chunks = self._split_chunks(encoded)
 
         total_chunks = len(chunks)
