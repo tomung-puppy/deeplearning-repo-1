@@ -67,9 +67,11 @@ class SmartCartEngine:
     def process_product_event(self, data: dict, session_id: int):
         """Processes a product detection event from the AI."""
         product_id = data["product_id"]
+        print(f"[Engine] Product event received: product_id={product_id}, confidence={data.get('confidence', 'N/A')}")
 
         # 1. Debounce product detection
         if not self._is_new_product_detection(product_id):
+            print(f"[Engine] Duplicate detection ignored (within {self.DUPLICATE_PRODUCT_INTERVAL_SEC}s)")
             return
 
         # 2. Get product details from DB
@@ -77,6 +79,8 @@ class SmartCartEngine:
         if not product:
             print(f"[Engine] WARN: Product with ID {product_id} not found in database.")
             return
+        
+        print(f"[Engine] Product found in DB: {product.get('name', 'N/A')}, price={product.get('price', 0)}")
 
         # 3. Add item to cart in DB
         self.tx_dao.add_cart_item(
@@ -84,13 +88,25 @@ class SmartCartEngine:
             product_id=product_id,
             quantity=1,
         )
+        print(f"[Engine] Item added to cart (session_id={session_id})")
 
-        # 4. Send command to UI to update cart
+        # 4. Get updated cart and send to UI
+        cart_items = self.tx_dao.list_cart_items(session_id)
+        total = sum(item['subtotal'] for item in cart_items)
+        
+        print(f"[Engine] Cart updated: {len(cart_items)} items, total={total}")
+        print(f"[Engine] Cart items: {cart_items}")
+        
         msg = Protocol.ui_command(
-            UICommand.ADD_TO_CART,
-            product,
+            UICommand.UPDATE_CART,
+            {
+                'items': cart_items,
+                'total': total
+            }
         )
+        print(f"[Engine] Sending UPDATE_CART to UI...")
         self.ui_client.send_request(msg)
+        print(f"[Engine] UPDATE_CART sent successfully")
 
     def _is_new_product_detection(self, product_id: int) -> bool:
         """Internal helper to check for duplicate product detections."""
