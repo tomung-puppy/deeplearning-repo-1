@@ -103,13 +103,14 @@ try:
         cleanup()
     print("  ✓ 하이브리드 카메라 실행 중 (PID: {})".format(cam_proc.pid))
 
-    # 4. UI 앱 시작
-    print("\n[4/4] UI 앱 시작 중...")
+    # 4. Enhanced UI 앱 시작
+    print("\n[4/4] Enhanced UI 앱 시작 중...")
+    print("  (Standby/Shopping/Checkout states with DB integration)")
     ui_proc = subprocess.Popen(
-        [PYTHON_PATH, "src/cart_ui_app.py"],
+        [PYTHON_PATH, "src/cart_ui_app_v2.py"],
         cwd=PROJECT_ROOT,
     )
-    processes.append(("UI App", ui_proc))
+    processes.append(("Enhanced UI App", ui_proc))
 
     print("\n" + "=" * 60)
     print("시스템 실행 중!")
@@ -123,14 +124,25 @@ try:
 
     print("\n" + "=" * 60)
     print("테스트 방법:")
-    print("  1. UI 창이 열립니다")
+    print("  1. UI 창이 열립니다 (대기 화면)")
+    print("     - 'Start Shopping' 버튼을 클릭하여 쇼핑 시작")
+    print("")
     print("  2. 두 개의 카메라 창이 열립니다:")
     print("     - Front Camera: 웹캠 2번 (USB 카메라 - 장애물 감지)")
     print("     - Cart Camera: 웹캠 0번 (내장 카메라 - 상품 인식 + ROI 표시)")
-    print("  3. 사람이나 장애물이 감지되면 UI에 경고 표시")
-    print("  4. 내장 카메라에 상품을 보여주고 아래로 이동시키면")
-    print("     → 장바구니에 추가됩니다 (주황색 라인 통과)")
-    print("  5. 카메라 창에서 'q' 키를 누르면 종료")
+    print("")
+    print("  3. 쇼핑 중:")
+    print("     - 내장 카메라에 상품을 보여주고 아래로 이동")
+    print("     - 주황색 라인을 넘으면 장바구니에 자동 추가")
+    print("     - 토스트 알림으로 추가된 상품 확인")
+    print("     - 장애물 감지 시 LED 색상 변경 (초록/노랑/빨강)")
+    print("")
+    print("  4. 쇼핑 종료:")
+    print("     - 'Finish Shopping' 버튼 클릭")
+    print("     - 총액 확인 후 'Confirm' 클릭")
+    print("     - 주문이 DB에 저장되고 대기 화면으로 복귀")
+    print("")
+    print("  5. 카메라 창에서 'q' 키를 누르면 전체 종료")
     print("=" * 60)
     print("\n종료하려면 Ctrl+C를 누르세요...")
 

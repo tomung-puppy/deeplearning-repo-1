@@ -60,7 +60,13 @@ class SmartCartEngine:
         if level >= DangerLevel.CAUTION:
             msg = Protocol.ui_command(
                 UICommand.SHOW_ALARM,
-                data,
+                {
+                    "level": level.value,
+                    "object_type": data.get("object_type", "obstacle"),
+                    "distance": data.get("distance", 0),
+                    "speed": data.get("speed", 0),
+                    "direction": data.get("direction", "front"),
+                },
             )
             self.ui_client.send_request(msg)
 

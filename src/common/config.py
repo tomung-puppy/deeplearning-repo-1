@@ -54,7 +54,7 @@ class PC1Config(BaseModel):
 
 class PC2Config(BaseModel):
     ip: str
-    cart_code: int
+    cart_code: str
     event_port: int
     ui_port: int
     udp_front_cam_port: int

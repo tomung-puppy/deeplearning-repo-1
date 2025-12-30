@@ -14,6 +14,17 @@ class TransactionDAO:
     # =========================
     # Shopping Session
     # =========================
+    def get_cart_id_by_code(self, cart_code: str) -> Optional[int]:
+        """Get cart_id from cart_code"""
+        sql = """
+        SELECT cart_id
+        FROM carts
+        WHERE cart_code = %s
+        LIMIT 1
+        """
+        result = self.db.fetch_one(sql, (cart_code,))
+        return result["cart_id"] if result else None
+
     def start_session(self, cart_id: int) -> int:
         """Start new cart session"""
         sql = """

@@ -56,22 +56,10 @@ class MainPC2Hub:
         )
 
         # -------------------------
-        # Session
+        # Session (will be started by UI request)
         # -------------------------
-        cart_code = config.network.pc2_main.cart_code
-        try:
-            self.session_id = self.tx_dao.start_session(cart_code)
-            self.logger.log_event(
-                "SESSION",
-                f"Session started with cart_code {cart_code}: session_id={self.session_id}",
-            )
-        except Exception as e:
-            self.logger.log_event(
-                "ERROR", f"Failed to start initial session for cart {cart_code}: {e}"
-            )
-            raise RuntimeError(
-                f"MainPC2Hub cannot start without a valid session."
-            ) from e
+        self.session_id = None
+        self.logger.log_event("SESSION", "No active session. Waiting for UI to start.")
 
         # -------------------------
         # UDP Forwarders (PC2 → AI)
@@ -159,39 +147,61 @@ class MainPC2Hub:
         return {"status": "UNKNOWN_CMD"}
 
     def _handle_ui_start(self) -> dict:
-        # 이미 세션이 있으면 무시
+        # If there's an existing session, end it first
         if self.session_id:
-            return {"status": "ALREADY_STARTED"}
+            self.logger.log_event(
+                "SESSION",
+                f"Ending previous session {self.session_id} before starting new one",
+            )
+            self.tx_dao.end_session(self.session_id)
+            self.engine.reset()
 
         cart_code = config.network.pc2_main.cart_code
         try:
-            self.session_id = self.tx_dao.start_session(cart_code)
+            # Get cart_id from cart_code
+            cart_id = self.tx_dao.get_cart_id_by_code(cart_code)
+            if not cart_id:
+                raise ValueError(f"Cart not found for code: {cart_code}")
+
+            self.session_id = self.tx_dao.start_session(cart_id)
             self.logger.log_event(
                 "SESSION",
-                f"Session started by UI: {self.session_id}",
+                f"✅ Session started by UI: session_id={self.session_id}, cart_id={cart_id}",
             )
+            print(f"[Main Hub] ✅ NEW SESSION: {self.session_id}")
             return {"status": "OK", "session_id": self.session_id}
         except Exception as e:
             self.logger.log_event(
                 "ERROR", f"UI-initiated session failed for cart {cart_code}: {e}"
             )
+            print(f"[Main Hub] ❌ SESSION START FAILED: {e}")
             return {"status": "ERROR", "reason": "Failed to start session"}
 
     def _handle_ui_checkout(self) -> dict:
+        print(f"[Main Hub] 🛒 CHECKOUT REQUEST RECEIVED")
+        print(f"[Main Hub]   Current session_id: {self.session_id}")
+
         if not self.session_id:
+            print(f"[Main Hub] ❌ NO ACTIVE SESSION")
             return {"status": "NO_ACTIVE_SESSION"}
 
         # 1. Get all cart items from the database for the current session
         cart_items = self.tx_dao.list_cart_items(self.session_id)
+        print(f"[Main Hub]   Found {len(cart_items)} cart items")
+
         if not cart_items:
             # Handle empty cart checkout? For now, we proceed.
             self.logger.log_event("SESSION", "Checkout initiated for an empty cart.")
             total_amount = 0
             total_items = 0
+            print(f"[Main Hub] ⚠️  Empty cart checkout")
         else:
             # 2. Calculate total amount and item count
-            total_amount = sum(item["total_price"] for item in cart_items)
+            total_amount = sum(
+                item.get("subtotal", item.get("total_price", 0)) for item in cart_items
+            )
             total_items = sum(item["quantity"] for item in cart_items)
+            print(f"[Main Hub]   Calculated: {total_items} items, ₩{total_amount}")
 
         # 3. Create the order with the calculated totals
         order_id = self.tx_dao.create_order(
@@ -199,23 +209,35 @@ class MainPC2Hub:
             total_amount=total_amount,
             total_items=total_items,
         )
+        print(f"[Main Hub] ✅ Order created: order_id={order_id}")
 
-        # 4. End the session
+        # 4. Add order details (snapshot of each product at purchase time)
+        for item in cart_items:
+            self.tx_dao.add_order_detail(
+                order_id=order_id,
+                product_id=item["product_id"],
+                snap_price=item["price"],
+                snap_img_url=None,  # TODO: Add product image URL if available
+            )
+        print(f"[Main Hub] ✅ Order details saved: {len(cart_items)} items")
+
+        # 5. End the session
         self.tx_dao.end_session(self.session_id)
+        print(f"[Main Hub] ✅ Session {self.session_id} ended")
 
         self.logger.log_event(
             "SESSION",
             f"Checkout completed: order_id={order_id}, total_amount={total_amount}, total_items={total_items}",
         )
 
-        # 5. Notify the UI
+        # 6. Notify the UI
         msg = Protocol.ui_command(
             UICommand.CHECKOUT_DONE,
             {"order_id": order_id, "total_amount": total_amount},
         )
         self.ui_client.send_request(msg)
 
-        # 6. Reset session state
+        # 7. Reset session state
         self.session_id = None
         self.engine.reset()
 
@@ -243,12 +265,21 @@ class MainPC2Hub:
 
     def _handle_obstacle(self, data: dict):
         if self.session_id is None:
+            self.logger.log_event(
+                "WARN", "Obstacle event received but no active session"
+            )
             return
         self.engine.process_obstacle_event(data, self.session_id)
 
     def _handle_product(self, data: dict):
         if self.session_id is None:
+            self.logger.log_event(
+                "WARN", f"Product event received but no active session: {data}"
+            )
             return
+        self.logger.log_event(
+            "DEBUG", f"Processing product event for session {self.session_id}: {data}"
+        )
         self.engine.process_product_event(data, self.session_id)
 
     # =========================
