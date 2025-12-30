@@ -16,8 +16,8 @@ PYTHON_PATH = sys.executable
 
 print("=" * 60)
 print("PC 1대 하이브리드 시스템 테스트")
-print("  - 전방 카메라: 영상 파일 (장애물 감지)")
-print("  - 카트 카메라: 웹캠 (상품 인식)")
+print("  - 전방 카메라: 웹캠 2번 (USB 카메라 - 장애물 감지)")
+print("  - 카트 카메라: 웹캠 0번 (내장 카메라 - 상품 인식)")
 print("=" * 60)
 
 processes = []
@@ -87,24 +87,19 @@ try:
 
     # 3. 최적화된 하이브리드 카메라 앱 시작
     print("\n[3/4] 최적화된 카메라 앱 시작 중...")
-    print("  (영상 파일 + 웹캠, 최적화됨)")
+    print("  (듀얼 웹캠: USB + 내장)")
     cam_proc = subprocess.Popen(
-        [PYTHON_PATH, "test/optimized_hybrid_camera.py"],
+        [PYTHON_PATH, "test/optimized_hybrid_camera.py", "--front", "2", "--cart", "0"],
         cwd=PROJECT_ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        # stdout과 stderr를 파이프하지 않음 - 터미널에 직접 출력
         text=True,
-        bufsize=1,
     )
     processes.append(("Hybrid Camera", cam_proc))
     time.sleep(2)
 
     if cam_proc.poll() is not None:
         print("  ✗ 카메라 앱 시작 실패!")
-        output = cam_proc.stdout.read()
-        print(output)
-        if "Webcam not available" in output:
-            print("  웹캠을 찾을 수 없습니다. 웹캠을 연결하고 다시 시도하세요.")
+        print("  웹캠을 연결하고 다시 시도하세요.")
         cleanup()
     print("  ✓ 하이브리드 카메라 실행 중 (PID: {})".format(cam_proc.pid))
 
@@ -130,11 +125,11 @@ try:
     print("테스트 방법:")
     print("  1. UI 창이 열립니다")
     print("  2. 두 개의 카메라 창이 열립니다:")
-    print("     - Front Camera: 영상 파일 (장애물 감지)")
-    print("     - Cart Camera: 웹캠 (상품 인식)")
+    print("     - Front Camera: 웹캠 2번 (USB 카메라 - 장애물 감지)")
+    print("     - Cart Camera: 웹캠 0번 (내장 카메라 - 상품 인식 + ROI 표시)")
     print("  3. 사람이나 장애물이 감지되면 UI에 경고 표시")
-    print("  4. 웹캠에 상품을 비춰보세요")
-    print("     → 상품이 인식되면 장바구니에 추가")
+    print("  4. 내장 카메라에 상품을 보여주고 아래로 이동시키면")
+    print("     → 장바구니에 추가됩니다 (주황색 라인 통과)")
     print("  5. 카메라 창에서 'q' 키를 누르면 종료")
     print("=" * 60)
     print("\n종료하려면 Ctrl+C를 누르세요...")

@@ -128,23 +128,42 @@ class AIServer:
             if frame is None:
                 continue
 
-            result = self.product_model.recognize(frame)
-            product_id = result.get("product_id")
-            confidence = result.get("confidence", 0.0)
+            # 모션 트리거 방식 사용 (카트에 넣는 순간만 감지)
+            result = self.product_model.recognize_with_trigger(frame, time.time())
 
-            print(
-                f"[AI Server] Product inference result: product_id={product_id}, confidence={confidence:.2f}, status={result.get('status')}"
-            )
+            status = result.get("status")
+            main_event = result.get("main_event")
+            all_detections = result.get("all_detections", [])
 
-            # Push event for every successful recognition. Debouncing is handled by the main hub's engine.
-            if product_id is not None:
+            # 디버그: 전체 상태 출력
+            print(f"[AI Server] Status: {status}, Detections: {len(all_detections)}")
+
+            # "added" 상태일 때만 이벤트 푸시 (추적 중에는 이벤트 안 보냄)
+            if status == "added" and main_event:
+                product_id = main_event.get("product_id")
+                confidence = main_event.get("confidence", 0.0)
+
                 print(
-                    f"[AI Server] Pushing PRODUCT_DETECTED event: product_id={product_id}, confidence={confidence:.2f}"
+                    f"[AI Server] 🎉 Product ADDED: product_id={product_id}, confidence={confidence:.2f}, movement={main_event.get('movement', 0):.1f}px"
                 )
+
+                # 카트에 추가된 순간만 이벤트 푸시
                 self._push_event(
                     AIEvent.PRODUCT_DETECTED,
                     {"product_id": product_id, "confidence": confidence},
                 )
+            elif status == "tracking" and main_event:
+                # 추적 중 (디버그 로그)
+                product_id = main_event.get("product_id")
+                zone = main_event.get("zone", "")
+                print(f"[AI Server] 📦 Tracking product_id={product_id}, zone={zone}")
+            elif status == "none":
+                # 아무것도 감지 안됨
+                if len(all_detections) > 0:
+                    print(
+                        f"[AI Server] ⏸️  Detections exist but no main event (cooldown or other)"
+                    )
+                # else: 아무것도 없음 (로그 안 함)
 
             time.sleep(0.1)  # Control inference frequency
 

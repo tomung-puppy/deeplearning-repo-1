@@ -23,7 +23,7 @@ from detectors.product_dl import ProductRecognizer
 class OptimizedHybridCameraApp:
     """최적화된 하이브리드 카메라 앱"""
 
-    def __init__(self, video_file):
+    def __init__(self, front_cam_id=0, cart_cam_id=1):
         if config is None:
             raise RuntimeError("Configuration could not be loaded. Exiting.")
 
@@ -40,23 +40,23 @@ class OptimizedHybridCameraApp:
         self.front_sender = UDPFrameSender(main_hub_ip, front_cam_port, jpeg_quality=70)
         self.cart_sender = UDPFrameSender(main_hub_ip, cart_cam_port, jpeg_quality=70)
 
-        # Video file
-        self.video_file = video_file
-        self.front_cap = cv2.VideoCapture(video_file)
+        # Front Webcam
+        self.front_cam_id = front_cam_id
+        self.front_cap = cv2.VideoCapture(front_cam_id)
         if not self.front_cap.isOpened():
-            raise RuntimeError(f"Cannot open video file: {video_file}")
+            raise RuntimeError(f"Cannot open front webcam (device {front_cam_id})")
 
-        # 영상 FPS 가져오기
-        video_fps = self.front_cap.get(cv2.CAP_PROP_FPS)
-        if video_fps > 0:
-            self.video_interval = 1.0 / min(video_fps, 15)  # 최대 15 FPS로 제한
-        else:
-            self.video_interval = 1.0 / 15
+        # 웹캠 해상도 설정
+        self.front_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.front_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-        # Webcam
-        self.cart_cap = cv2.VideoCapture(0)
+        self.video_interval = 1.0 / self.fps
+
+        # Cart Webcam
+        self.cart_cam_id = cart_cam_id
+        self.cart_cap = cv2.VideoCapture(cart_cam_id)
         if not self.cart_cap.isOpened():
-            raise RuntimeError("Webcam not available")
+            raise RuntimeError(f"Cannot open cart webcam (device {cart_cam_id})")
 
         # 웹캠 해상도 설정
         self.cart_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -75,19 +75,19 @@ class OptimizedHybridCameraApp:
 
         print("=" * 60)
         print("최적화된 하이브리드 카메라 앱 (디버그 박스)")
-        print(f"  전방: {video_file}")
-        print(f"  카트: 웹캠 (상품 인식 바운딩 박스 표시)")
+        print(f"  전방: 웹캠 {front_cam_id} (장애물 감지)")
+        print(f"  카트: 웹캠 {cart_cam_id} (상품 인식 바운딩 박스 표시)")
         print(f"  Main Hub: {main_hub_ip}")
         print("=" * 60)
 
     def _capture_video_thread(self):
-        """영상 파일 캡처 스레드"""
-        print("[전방] 영상 캡처 시작")
+        """전방 웹캠 캡처 스레드"""
+        print(f"[전방] 웹캠 {self.front_cam_id} 캡처 시작")
         while self.is_running:
             ret, frame = self.front_cap.read()
 
             if not ret:
-                self.front_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                time.sleep(0.1)
                 continue
 
             # 리사이즈
@@ -107,8 +107,8 @@ class OptimizedHybridCameraApp:
         print("[전방] 캡처 종료")
 
     def _capture_webcam_thread(self):
-        """웹캠 캡처 스레드 (상품 인식 포함)"""
-        print("[카트] 웹캠 캡처 시작 (상품 인식 활성화)")
+        """웹캠 캡처 스레드 (상품 인식 포함 - 모션 트리거)"""
+        print("[카트] 웹캠 캡처 시작 (ROI + 모션 트리거 활성화)")
         interval = 1.0 / self.fps
         frame_count = 0
         last_result = None
@@ -132,62 +132,157 @@ class OptimizedHybridCameraApp:
             # 디스플레이용 프레임
             display_frame = resized.copy()
 
-            # 상품 인식 (3프레임마다 - 성능 최적화)
-            if frame_count % 3 == 0:
+            # 상품 인식 (모션 트리거 방식)
+            if frame_count % 2 == 0:  # 2프레임마다 인식 (더 빠른 반응)
                 try:
-                    last_result = self.product_recognizer.recognize(resized)
+                    current_time = time.time()
+                    last_result = self.product_recognizer.recognize_with_trigger(
+                        resized, current_time
+                    )
                 except Exception as e:
                     last_result = {"status": "error", "message": str(e)}
 
+            # ROI 영역 시각화
+            zones = self.product_recognizer.get_debug_zones(display_frame.shape)
+            h, w = display_frame.shape[:2]
+            entry_y = int(h * self.product_recognizer.entry_zone_ratio)
+            trigger_y = int(h * self.product_recognizer.trigger_zone_ratio)
+
+            # 진입 영역 라인 (초록색)
+            cv2.line(display_frame, (0, entry_y), (w, entry_y), (0, 255, 0), 2)
+            cv2.putText(
+                display_frame,
+                "ENTRY ZONE",
+                (10, entry_y - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2,
+            )
+
+            # 트리거 영역 라인 (주황색)
+            cv2.line(display_frame, (0, trigger_y), (w, trigger_y), (0, 165, 255), 2)
+            cv2.putText(
+                display_frame,
+                "ADD TO CART",
+                (10, trigger_y + 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 165, 255),
+                2,
+            )
+
             # 인식 결과 시각화
             if last_result:
-                if last_result.get("status") == "detected":
-                    product_id = last_result.get("product_id")
-                    confidence = last_result.get("confidence", 0.0)
-                    bbox = last_result.get("bbox")
+                status = last_result.get("status")
+                main_event = last_result.get("main_event")
+                all_detections = last_result.get("all_detections", [])
 
-                    if bbox:
-                        # 바운딩 박스 그리기
-                        x1, y1, x2, y2 = map(int, bbox)
-                        cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
+                # 모든 감지된 물체들의 바운딩 박스 표시
+                for detection in all_detections:
+                    bbox = detection.get("bbox")
+                    if not bbox:
+                        continue
 
-                        # 레이블 배경
+                    x1, y1, x2, y2 = map(int, bbox)
+                    product_id = detection.get("product_id")
+                    confidence = detection.get("confidence", 0.0)
+                    state = detection.get("state", "unknown")
+
+                    # 상태별 색상 및 라벨 설정
+                    if state == "added":
+                        # 🎉 카트에 추가됨 (주황색)
+                        color = (0, 165, 255)
+                        thickness = 4
+                        label = f"ADDED! ID:{product_id} {confidence:.2f}"
+                    elif state == "tracking":
+                        # 추적 중 (노란색)
+                        color = (0, 255, 255)
+                        thickness = 3
+                        zone = detection.get("zone", "")
+                        label = f"Tracking ID:{product_id} {confidence:.2f}"
+                    elif state == "cooldown":
+                        # 쿨다운 중 (회색)
+                        color = (128, 128, 128)
+                        thickness = 2
+                        cooldown_time = detection.get("cooldown_remaining", 0)
+                        label = f"Cooldown ID:{product_id} ({cooldown_time:.1f}s)"
+                    elif state == "detected_outside":
+                        # 진입 영역 밖에서 감지 (하늘색)
+                        color = (255, 200, 100)
+                        thickness = 2
                         label = f"ID:{product_id} {confidence:.2f}"
-                        label_size, _ = cv2.getTextSize(
-                            label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
-                        )
-                        cv2.rectangle(
-                            display_frame,
-                            (x1, y1 - label_size[1] - 10),
-                            (x1 + label_size[0], y1),
-                            (0, 255, 0),
-                            -1,
-                        )
-
-                        # 레이블 텍스트 (검은색)
-                        cv2.putText(
-                            display_frame,
-                            label,
-                            (x1, y1 - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.7,
-                            (0, 0, 0),
-                            2,
-                        )
                     else:
-                        # bbox 없으면 화면 상단에만 표시
-                        text = f"Product ID: {product_id} ({confidence:.2f})"
+                        # 기타 (초록색)
+                        color = (0, 255, 0)
+                        thickness = 2
+                        label = f"ID:{product_id} {confidence:.2f}"
+
+                    # 바운딩 박스 그리기
+                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, thickness)
+
+                    # 레이블 배경
+                    label_size, _ = cv2.getTextSize(
+                        label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
+                    )
+                    cv2.rectangle(
+                        display_frame,
+                        (x1, y1 - label_size[1] - 10),
+                        (x1 + label_size[0], y1),
+                        color,
+                        -1,
+                    )
+
+                    # 레이블 텍스트
+                    text_color = (255, 255, 255) if state == "added" else (0, 0, 0)
+                    cv2.putText(
+                        display_frame,
+                        label,
+                        (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        text_color,
+                        2,
+                    )
+
+                # 화면 상단 메시지
+                if status == "added" and main_event:
+                    # 추가됨 알림
+                    cv2.putText(
+                        display_frame,
+                        f"PRODUCT ADDED TO CART!",
+                        (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (0, 165, 255),
+                        2,
+                    )
+                elif status == "tracking" and main_event:
+                    # 추적 중 메시지
+                    zone = main_event.get("zone", "")
+                    cv2.putText(
+                        display_frame,
+                        f"Tracking... ({zone})",
+                        (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
+                elif status == "none":
+                    # 인식 안됨
+                    if len(all_detections) == 0:
                         cv2.putText(
                             display_frame,
-                            text,
+                            "Waiting for product...",
                             (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.7,
-                            (0, 255, 0),
+                            (128, 128, 128),
                             2,
                         )
 
-                elif last_result.get("status") == "error":
+                elif status == "error":
                     cv2.putText(
                         display_frame,
                         f"Error: {last_result.get('message', '')[:40]}",
@@ -201,13 +296,25 @@ class OptimizedHybridCameraApp:
                     # 인식 안됨
                     cv2.putText(
                         display_frame,
-                        "No product detected",
+                        "Waiting for product...",
                         (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.7,
                         (128, 128, 128),
                         2,
                     )
+
+            # 추적 정보 표시
+            info_y = 60
+            cv2.putText(
+                display_frame,
+                f"Tracked: {zones['tracked_count']} | Cooldown: {zones['cooldown_count']}",
+                (10, info_y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1,
+            )
 
             # FPS 표시
             cv2.putText(
@@ -277,22 +384,26 @@ class OptimizedHybridCameraApp:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="최적화된 하이브리드 카메라 앱")
+    parser = argparse.ArgumentParser(
+        description="최적화된 하이브리드 카메라 앱 (듀얼 웹캠)"
+    )
     parser.add_argument(
-        "--video",
-        default="test/Grocery Store Vocabulary_ shop in English.mp4",
-        help="전방 카메라용 영상 파일",
+        "--front",
+        type=int,
+        default=0,
+        help="전방 카메라 장치 번호 (기본값: 0)",
+    )
+    parser.add_argument(
+        "--cart",
+        type=int,
+        default=1,
+        help="카트 카메라 장치 번호 (기본값: 1)",
     )
 
     args = parser.parse_args()
 
-    video_path = Path(args.video)
-    if not video_path.exists():
-        print(f"ERROR: 영상 파일을 찾을 수 없습니다: {video_path}")
-        sys.exit(1)
-
     try:
-        app = OptimizedHybridCameraApp(str(video_path))
+        app = OptimizedHybridCameraApp(front_cam_id=args.front, cart_cam_id=args.cart)
         app.run()
     except Exception as e:
         print(f"ERROR: {e}")
