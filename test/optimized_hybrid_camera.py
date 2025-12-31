@@ -23,7 +23,7 @@ from detectors.product_dl import ProductRecognizer
 class OptimizedHybridCameraApp:
     """최적화된 하이브리드 카메라 앱"""
 
-    def __init__(self, front_cam_id=0, cart_cam_id=1):
+    def __init__(self, front_cam_id=2, cart_cam_id=0):
         if config is None:
             raise RuntimeError("Configuration could not be loaded. Exiting.")
 

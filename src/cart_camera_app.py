@@ -44,8 +44,8 @@ class CartEdgeApp:
         # -------------------------
         # Camera devices
         # -------------------------
-        self.front_cap = cv2.VideoCapture(0)
-        self.cart_cap = cv2.VideoCapture(1)
+        self.front_cap = cv2.VideoCapture(2)
+        self.cart_cap = cv2.VideoCapture(0)
 
         if not self.front_cap.isOpened():
             raise RuntimeError("Front camera not available")
