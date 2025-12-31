@@ -78,9 +78,17 @@ class ToastNotification(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+
+        # Ensure it stays on top of parent
+        if parent:
+            self.setParent(parent)
 
         layout = QHBoxLayout()
         self.setLayout(layout)
@@ -105,21 +113,69 @@ class ToastNotification(QWidget):
         self.setGraphicsEffect(self.opacity_effect)
         self.animation = QPropertyAnimation(self.opacity_effect, b"opacity")
 
+        # Timer for auto-hide
+        self.hide_timer = QTimer()
+        self.hide_timer.setSingleShot(True)
+        self.hide_timer.timeout.connect(self._fade_out)
+
+        # Queue system for multiple toasts
+        self.message_queue = []
+        self.is_showing = False
+
     def show_message(self, message: str, duration: int = 3000):
-        """Show toast message with fade in/out animation"""
+        """Show toast message with fade in/out animation - uses queue system"""
+        print(f"[Toast] show_message called: '{message}', duration={duration}ms")
+
+        # Add to queue
+        self.message_queue.append((message, duration))
+        print(f"[Toast] Queue length: {len(self.message_queue)}")
+
+        # If not currently showing, start displaying
+        if not self.is_showing:
+            self._show_next()
+
+    def _show_next(self):
+        """Show next message in queue"""
+        if not self.message_queue:
+            print(f"[Toast] Queue empty, nothing to show")
+            self.is_showing = False
+            return
+
+        self.is_showing = True
+        message, duration = self.message_queue.pop(0)
+        print(
+            f"[Toast] Showing message: '{message}', remaining in queue: {len(self.message_queue)}"
+        )
+
+        # Stop any ongoing animation/timer
+        if self.animation.state() == QPropertyAnimation.State.Running:
+            print(f"[Toast] Stopping running animation")
+            self.animation.stop()
+        if self.hide_timer.isActive():
+            print(f"[Toast] Stopping active timer")
+            self.hide_timer.stop()
+
         self.label.setText(message)
         self.adjustSize()
 
         # Position at bottom center of parent
         if self.parent():
-            parent_rect = self.parent().rect()
-            x = (parent_rect.width() - self.width()) // 2
-            y = parent_rect.height() - self.height() - 50
+            parent_widget = self.parent()
+            # Use global coordinates for proper positioning
+            parent_geo = parent_widget.geometry()
+            x = parent_geo.x() + (parent_geo.width() - self.width()) // 2
+            y = parent_geo.y() + parent_geo.height() - self.height() - 50
+
+            print(f"[Toast] Positioning at global ({x}, {y})")
+
+            # Raise to top and move
+            self.raise_()
             self.move(x, y)
 
         # Fade in
         self.opacity_effect.setOpacity(0)
         self.show()
+        print(f"[Toast] Starting fade in animation")
 
         self.animation.setDuration(300)
         self.animation.setStartValue(0)
@@ -128,14 +184,35 @@ class ToastNotification(QWidget):
         self.animation.start()
 
         # Auto hide after duration
-        QTimer.singleShot(duration, self._fade_out)
+        print(f"[Toast] Starting hide timer for {duration}ms")
+        self.hide_timer.start(duration)
 
     def _fade_out(self):
+        print(f"[Toast] _fade_out called")
+        if self.animation.state() == QPropertyAnimation.State.Running:
+            print(f"[Toast] Animation already running, stopping it first")
+            self.animation.stop()
+
         self.animation.setDuration(300)
         self.animation.setStartValue(1)
         self.animation.setEndValue(0)
-        self.animation.finished.connect(self.hide)
+
+        # Disconnect previous connections to avoid duplicates
+        try:
+            self.animation.finished.disconnect()
+        except:
+            pass
+
+        self.animation.finished.connect(self._on_fade_complete)
+        print(f"[Toast] Starting fade out animation")
         self.animation.start()
+
+    def _on_fade_complete(self):
+        print(f"[Toast] Fade out complete, hiding widget")
+        self.hide()
+
+        # Show next message in queue after a short delay
+        QTimer.singleShot(200, self._show_next)
 
 
 class CheckoutDialog(QDialog):
@@ -570,8 +647,10 @@ class CartDashboard(QMainWindow):
         )
 
     def show_product_added(self, product_name: str):
-        """Show toast notification when product is added"""
-        self.toast.show_message(f"✅ {product_name} added to cart!")
+        """Show toast notification when product is added (disabled)"""
+        print(f"[Dashboard] Product added: {product_name}")
+        # Toast disabled - cart table update provides sufficient feedback
+        pass
 
     def set_danger_level(self, level: DangerLevel, message: str = ""):
         """Update obstacle danger level"""

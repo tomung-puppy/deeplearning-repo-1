@@ -9,7 +9,7 @@ Enhanced UI Controller with full DB integration
 import threading
 import socket
 import json
-from typing import Optional
+from typing import Optional, List, Dict
 from datetime import datetime
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -70,6 +70,11 @@ class UIController:
         # Session state
         self.current_session_id: Optional[int] = None
         self.last_added_product_name: Optional[str] = None
+        self.previous_cart_items: List[Dict] = []  # Track previous cart state
+        # When True, the next UPDATE_CART will be treated as the initial baseline and will not
+        # emit a product_added signal. This avoids false positives immediately after session start
+        # or after manual resets.
+        self._expect_initial_cart: bool = False
 
         # Signals
         self.signals = UIEventSignals()
@@ -102,12 +107,25 @@ class UIController:
         self.dashboard.update_quantity_signal.connect(self._on_update_quantity)
         self.dashboard.remove_item_signal.connect(self._on_remove_item)
 
+    def _reset_previous_cart(self):
+        """Clear cached previous cart state used for change detection.
+
+        Also set a flag to expect the initial cart snapshot from the Main Hub. The
+        first UPDATE_CART after this reset is used as a baseline and will not be
+        considered a "new product" event.
+        """
+        self.previous_cart_items = []
+        self._expect_initial_cart = True
+
     # =========================
     # Shopping Session Management
     # =========================
     def _on_start_shopping(self):
         """Handle start shopping event - request Main Hub to start session"""
         print("[UI Controller] Requesting new shopping session from Main Hub...")
+
+        # Reset previous cart state
+        self._reset_previous_cart()
 
         try:
             # Send START_SESSION request to Main Hub
@@ -350,13 +368,43 @@ class UIController:
 
         print(f"[UI Controller] UPDATE_CART: {len(items)} items, total=₩{total}")
 
-        # Update UI
+        # Detect newly added product by comparing with previous cart
+        newly_added_product = None
+
+        # Build dictionaries for comparison
+        prev_dict = {
+            item["product_id"]: item["quantity"] for item in self.previous_cart_items
+        }
+        curr_dict = {item["product_id"]: item["quantity"] for item in items}
+
+        # Find products with increased quantity
+        for item in items:
+            product_id = item["product_id"]
+            prev_qty = prev_dict.get(product_id, 0)
+            curr_qty = item["quantity"]
+
+            if curr_qty > prev_qty:
+                newly_added_product = item["product_name"]
+                break
+
+        # Deep copy for proper state tracking
+        self.previous_cart_items = [
+            {
+                "product_id": item["product_id"],
+                "product_name": item["product_name"],
+                "quantity": item["quantity"],
+                "price": item["price"],
+                "subtotal": item["subtotal"],
+            }
+            for item in items
+        ]
+
+        # Update UI - First update cart display
         self.signals.cart_updated.emit(items, total)
 
-        # Show toast for newly added product
-        if items and self.last_added_product_name:
-            self.signals.product_added.emit(self.last_added_product_name)
-            self.last_added_product_name = None
+        # Emit product_added signal (currently disabled in dashboard)
+        if newly_added_product:
+            self.signals.product_added.emit(newly_added_product)
 
     def _handle_add_to_cart(self, content: dict):
         """Handle ADD_TO_CART command (legacy)"""

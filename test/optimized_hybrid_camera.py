@@ -142,35 +142,28 @@ class OptimizedHybridCameraApp:
                 except Exception as e:
                     last_result = {"status": "error", "message": str(e)}
 
-            # ROI 영역 시각화
+            # 시스템 상태 표시
             zones = self.product_recognizer.get_debug_zones(display_frame.shape)
             h, w = display_frame.shape[:2]
-            entry_y = int(h * self.product_recognizer.entry_zone_ratio)
-            trigger_y = int(h * self.product_recognizer.trigger_zone_ratio)
 
-            # 진입 영역 라인 (초록색)
-            cv2.line(display_frame, (0, entry_y), (w, entry_y), (0, 255, 0), 2)
-            cv2.putText(
-                display_frame,
-                "ENTRY ZONE",
-                (10, entry_y - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                2,
-            )
-
-            # 트리거 영역 라인 (주황색)
-            cv2.line(display_frame, (0, trigger_y), (w, trigger_y), (0, 165, 255), 2)
-            cv2.putText(
-                display_frame,
-                "ADD TO CART",
-                (10, trigger_y + 20),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 165, 255),
-                2,
-            )
+            # 상태 정보 표시 (상단)
+            info_text = [
+                f"Tracking: {zones['tracked_count']}",
+                f"Cooldown: {zones['cooldown_count']}",
+                f"Duration: {zones['required_duration']:.1f}s",
+            ]
+            y_offset = 30
+            for text in info_text:
+                cv2.putText(
+                    display_frame,
+                    text,
+                    (10, y_offset),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 0),
+                    2,
+                )
+                y_offset += 30
 
             # 인식 결과 시각화
             if last_result:
@@ -194,24 +187,23 @@ class OptimizedHybridCameraApp:
                         # 🎉 카트에 추가됨 (주황색)
                         color = (0, 165, 255)
                         thickness = 4
-                        label = f"ADDED! ID:{product_id} {confidence:.2f}"
+                        duration = detection.get("duration", 0.0)
+                        label = f"ADDED! ID:{product_id} ({duration:.1f}s)"
                     elif state == "tracking":
                         # 추적 중 (노란색)
                         color = (0, 255, 255)
                         thickness = 3
-                        zone = detection.get("zone", "")
-                        label = f"Tracking ID:{product_id} {confidence:.2f}"
+                        duration = detection.get("duration", 0.0)
+                        remaining = detection.get("remaining", 0.0)
+                        label = (
+                            f"Tracking ID:{product_id} {duration:.1f}s/{remaining:.1f}s"
+                        )
                     elif state == "cooldown":
                         # 쿨다운 중 (회색)
                         color = (128, 128, 128)
                         thickness = 2
                         cooldown_time = detection.get("cooldown_remaining", 0)
                         label = f"Cooldown ID:{product_id} ({cooldown_time:.1f}s)"
-                    elif state == "detected_outside":
-                        # 진입 영역 밖에서 감지 (하늘색)
-                        color = (255, 200, 100)
-                        thickness = 2
-                        label = f"ID:{product_id} {confidence:.2f}"
                     else:
                         # 기타 (초록색)
                         color = (0, 255, 0)

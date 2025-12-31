@@ -21,17 +21,13 @@ class ProductRecognizer:
             f"[ProductRecognizer] Model type: {'OBB' if self.is_obb else 'Detection'}"
         )
 
-        # ROI + 모션 추적 시스템
+        # 시간 기반 인식 시스템
         self.tracked_objects = (
             {}
-        )  # {product_id: {"first_y": y, "last_y": y, "status": str, "last_seen": time}}
+        )  # {product_id: {"first_seen": time, "last_seen": time, "bbox": list}}
         self.last_added = {}  # {product_id: timestamp} - 쿨다운용
         self.cooldown_seconds = 3  # 같은 물건 3초 내 재인식 방지
-
-        # ROI 영역 설정 (화면 비율 기준)
-        self.entry_zone_ratio = 0.55  # 상단 55%까지를 진입 영역으로 (더 넓게)
-        self.trigger_zone_ratio = 0.70  # 70% 아래로 내려가면 카트에 추가됨
-        self.min_movement = 80  # 최소 이동 거리 (픽셀)
+        self.required_duration = 1.5  # 1.5초간 지속적으로 인식되어야 추가됨
 
     def recognize(self, frame):
         """
@@ -103,11 +99,11 @@ class ProductRecognizer:
 
     def recognize_with_trigger(self, frame, current_time=None):
         """
-        물건을 카트에 넣는 순간을 감지하는 인식 메서드
+        시간 기반 상품 인식 메서드
 
         동작 원리:
-        1. 상단 진입 영역(0~55%)에서 물체 첫 감지 → 추적 시작
-        2. 물체가 트리거 영역(70% 이하)으로 이동 → "카트에 추가됨" 이벤트 발생
+        1. 물체 감지 시작 → 추적 시작
+        2. 1.5초간 지속적으로 인식되면 → "카트에 추가됨" 이벤트 발생
         3. 쿨다운: 같은 물건을 3초 내에 재인식하지 않음
 
         Args:
@@ -123,10 +119,6 @@ class ProductRecognizer:
         """
         if current_time is None:
             current_time = time.time()
-
-        h, w = frame.shape[:2]
-        entry_zone_y = h * self.entry_zone_ratio
-        trigger_zone_y = h * self.trigger_zone_ratio
 
         try:
             results = self.model.predict(frame, conf=self.threshold, verbose=False)
@@ -201,21 +193,15 @@ class ProductRecognizer:
 
                 # 추적 상태 업데이트
                 if product_id not in self.tracked_objects:
-                    # 새로 발견된 물체 - 무조건 추적 시작! (위치 상관없이)
+                    # 새로 발견된 물체 - 추적 시작
                     self.tracked_objects[product_id] = {
-                        "first_y": center_y,
-                        "last_y": center_y,
-                        "status": "entering",
+                        "first_seen": current_time,
                         "last_seen": current_time,
                         "bbox": bbox.tolist(),
                     }
 
-                    # 진입 영역인지 표시
-                    in_entry = center_y < entry_zone_y
-                    zone_name = "entry" if in_entry else "mid"
-
                     detection_info["state"] = "tracking"
-                    detection_info["zone"] = zone_name
+                    detection_info["duration"] = 0.0
                     all_detections.append(detection_info)
 
                     if main_event is None:
@@ -224,47 +210,39 @@ class ProductRecognizer:
                             "confidence": confidence,
                             "bbox": bbox.tolist(),
                             "status": "tracking",
-                            "zone": zone_name,
+                            "duration": 0.0,
                         }
                 else:
                     # 이미 추적 중인 물체
                     obj = self.tracked_objects[product_id]
-                    movement = center_y - obj["first_y"]
-
-                    # 상태 업데이트
-                    obj["last_y"] = center_y
                     obj["last_seen"] = current_time
                     obj["bbox"] = bbox.tolist()
 
-                    # 트리거 조건 체크
-                    if obj["status"] == "entering" and center_y > trigger_zone_y:
-                        if movement > self.min_movement:
-                            # 🎉 카트에 추가됨!
-                            self.last_added[product_id] = current_time
-                            del self.tracked_objects[product_id]
+                    duration = current_time - obj["first_seen"]
 
-                            detection_info["state"] = "added"
-                            detection_info["movement"] = movement
-                            all_detections.append(detection_info)
+                    # 시간 기반 트리거 체크
+                    if duration >= self.required_duration:
+                        # 🎉 카트에 추가됨!
+                        self.last_added[product_id] = current_time
+                        del self.tracked_objects[product_id]
 
-                            main_event = {
-                                "product_id": product_id,
-                                "confidence": confidence,
-                                "bbox": bbox.tolist(),
-                                "status": "added",
-                                "trigger": "motion_detected",
-                                "movement": movement,
-                            }
-                        else:
-                            # 이동 거리 부족
-                            detection_info["state"] = "tracking"
-                            detection_info["zone"] = "moving"
-                            detection_info["movement"] = movement
-                            all_detections.append(detection_info)
+                        detection_info["state"] = "added"
+                        detection_info["duration"] = duration
+                        all_detections.append(detection_info)
+
+                        main_event = {
+                            "product_id": product_id,
+                            "confidence": confidence,
+                            "bbox": bbox.tolist(),
+                            "status": "added",
+                            "trigger": "duration_reached",
+                            "duration": duration,
+                        }
                     else:
+                        # 아직 시간이 안됨 - 계속 추적
                         detection_info["state"] = "tracking"
-                        detection_info["zone"] = "moving"
-                        detection_info["movement"] = movement
+                        detection_info["duration"] = duration
+                        detection_info["remaining"] = self.required_duration - duration
                         all_detections.append(detection_info)
 
                         if main_event is None:
@@ -273,7 +251,8 @@ class ProductRecognizer:
                                 "confidence": confidence,
                                 "bbox": bbox.tolist(),
                                 "status": "tracking",
-                                "zone": "moving",
+                                "duration": duration,
+                                "remaining": self.required_duration - duration,
                             }
 
         # 오래된 추적 정보 정리 (2초 이상 보이지 않으면 제거)
@@ -312,24 +291,19 @@ class ProductRecognizer:
 
     def get_debug_zones(self, frame_shape):
         """
-        디버깅용: ROI 영역 정보 반환
+        디버깅용: 추적 정보 반환
 
         Returns:
             dict: {
-                "entry_zone": (x1, y1, x2, y2),
-                "trigger_zone": (x1, y1, x2, y2),
-                "tracked_count": int
+                "tracked_count": int,
+                "cooldown_count": int,
+                "required_duration": float
             }
         """
-        h, w = frame_shape[:2]
-        entry_y = int(h * self.entry_zone_ratio)
-        trigger_y = int(h * self.trigger_zone_ratio)
-
         return {
-            "entry_zone": (0, 0, w, entry_y),
-            "trigger_zone": (0, trigger_y, w, h),
             "tracked_count": len(self.tracked_objects),
             "cooldown_count": len(self.last_added),
+            "required_duration": self.required_duration,
         }
 
     def reset_tracking(self):
