@@ -20,11 +20,23 @@ class ObstacleDetector:
         """
         이미지를 분석하여 장애물 유무와 위험도를 반환
         """
-        results = self.model.predict(frame, conf=self.threshold, verbose=False)
+        try:
+            results = self.model.predict(frame, conf=self.threshold, verbose=False)
+        except Exception as e:
+            print(f"[ObstacleDetector] Error in predict: {e}")
+            return {"danger_level": 0.0, "objects": []}
+
         danger_level = 0.0
         detected_objects = []
 
+        # 안전한 None 체크
+        if results is None or len(results) == 0:
+            return {"danger_level": 0.0, "objects": []}
+
         for result in results:
+            if result.boxes is None or len(result.boxes) == 0:
+                continue
+
             for box in result.boxes:
                 # 클래스 정보 (0: person, 1: cart 등 가디언 설정에 따름)
                 cls = int(box.cls[0])

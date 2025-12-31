@@ -36,6 +36,8 @@ class UICommand(IntEnum):
 class UIRequest(IntEnum):
     START_SESSION = 1
     CHECKOUT = 2
+    UPDATE_QUANTITY = 3
+    REMOVE_ITEM = 4
 
 
 class DBAction(IntEnum):

@@ -223,6 +223,8 @@ class CartDashboard(QMainWindow):
     start_shopping_signal = pyqtSignal()
     end_shopping_signal = pyqtSignal()
     confirm_checkout_signal = pyqtSignal()
+    update_quantity_signal = pyqtSignal(int, int)  # product_id, new_quantity
+    remove_item_signal = pyqtSignal(int)  # product_id
 
     def __init__(self):
         super().__init__()
@@ -386,15 +388,18 @@ class CartDashboard(QMainWindow):
         layout.addWidget(title)
 
         # Table
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Product", "Price", "Qty", "Subtotal"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(
+            ["Product", "Price", "Qty", "Subtotal", "Actions"]
+        )
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
 
         header = self.table.horizontalHeader()
         assert header is not None
         header.setStretchLastSection(True)
-        header.setDefaultSectionSize(150)
+        header.setDefaultSectionSize(120)
+        header.resizeSection(4, 200)  # Actions column wider
 
         layout.addWidget(self.table)
 
@@ -534,41 +539,32 @@ class CartDashboard(QMainWindow):
             },
             ...
         ]
+        Note: items are already grouped by product_id in the DAO
         """
         print(f"[Dashboard] Updating cart: {len(items)} items, total=₩{total}")
 
-        # Group by product_id
-        grouped_items = {}
-        for item in items:
-            product_id = item["product_id"]
-            if product_id in grouped_items:
-                grouped_items[product_id]["quantity"] += item["quantity"]
-                grouped_items[product_id]["subtotal"] += item["subtotal"]
-            else:
-                grouped_items[product_id] = {
-                    "product_name": item["product_name"],
-                    "price": item["price"],
-                    "quantity": item["quantity"],
-                    "subtotal": item["subtotal"],
-                }
-
-        # Update table
+        # Update table (items already grouped by DAO)
         self.table.setRowCount(0)
-        for product_id, item in grouped_items.items():
+        for item in items:
             row = self.table.rowCount()
             self.table.insertRow(row)
 
+            product_id = item["product_id"]
             self.table.setItem(row, 0, QTableWidgetItem(item["product_name"]))
             self.table.setItem(row, 1, QTableWidgetItem(f"₩{item['price']:,}"))
             self.table.setItem(row, 2, QTableWidgetItem(str(item["quantity"])))
             self.table.setItem(row, 3, QTableWidgetItem(f"₩{item['subtotal']:,}"))
+
+            # Actions buttons
+            actions_widget = self._create_action_buttons(product_id, item["quantity"])
+            self.table.setCellWidget(row, 4, actions_widget)
 
         # Update total
         self.total_price = total
         self.total_label.setText(f"₩{self.total_price:,}")
 
         # Update item count
-        total_items = sum(item["quantity"] for item in grouped_items.values())
+        total_items = sum(item["quantity"] for item in items)
         self.item_count_label.setText(
             f"{total_items} item{'s' if total_items != 1 else ''}"
         )
@@ -604,6 +600,77 @@ class CartDashboard(QMainWindow):
     def set_session_id(self, session_id: int):
         """Set current shopping session ID"""
         self.session_id = session_id
+
+    def _create_action_buttons(self, product_id: int, quantity: int) -> QWidget:
+        """Create action buttons for a cart item (+/- and delete)"""
+        widget = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setSpacing(5)
+        widget.setLayout(layout)
+
+        # Minus button
+        minus_btn = QPushButton("-")
+        minus_btn.setFixedSize(35, 30)
+        minus_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                font-weight: bold;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+        """
+        )
+        minus_btn.clicked.connect(
+            lambda: self.update_quantity_signal.emit(product_id, quantity - 1)
+        )
+        layout.addWidget(minus_btn)
+
+        # Plus button
+        plus_btn = QPushButton("+")
+        plus_btn.setFixedSize(35, 30)
+        plus_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """
+        )
+        plus_btn.clicked.connect(
+            lambda: self.update_quantity_signal.emit(product_id, quantity + 1)
+        )
+        layout.addWidget(plus_btn)
+
+        # Delete button
+        delete_btn = QPushButton("🗑️")
+        delete_btn.setFixedSize(35, 30)
+        delete_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #F44336;
+                color: white;
+                font-weight: bold;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #D32F2F;
+            }
+        """
+        )
+        delete_btn.clicked.connect(lambda: self.remove_item_signal.emit(product_id))
+        layout.addWidget(delete_btn)
+
+        return widget
 
 
 if __name__ == "__main__":

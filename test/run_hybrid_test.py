@@ -16,8 +16,8 @@ PYTHON_PATH = sys.executable
 
 print("=" * 60)
 print("PC 1대 하이브리드 시스템 테스트")
-print("  - 전방 카메라: 웹캠 0번 (USB 카메라 - 장애물 감지)")
-print("  - 카트 카메라: 웹캠 2번 (내장 카메라 - 상품 인식)")
+print("  - 전방 카메라: 웹캠 2번 (USB 카메라 - 장애물 감지)")
+print("  - 카트 카메라: 웹캠 0번 (내장 카메라 - 상품 인식)")
 print("=" * 60)
 
 processes = []
@@ -87,9 +87,9 @@ try:
 
     # 3. 최적화된 하이브리드 카메라 앱 시작
     print("\n[3/4] 최적화된 카메라 앱 시작 중...")
-    print("  (듀얼 웹캠: USB + 내장)")
+    print("  (듀얼 웹캠: USB(2번-전방) + 내장(0번-카트))")
     cam_proc = subprocess.Popen(
-        [PYTHON_PATH, "test/optimized_hybrid_camera.py", "--front", "0", "--cart", "2"],
+        [PYTHON_PATH, "test/optimized_hybrid_camera.py", "--front", "2", "--cart", "0"],
         cwd=PROJECT_ROOT,
         # stdout과 stderr를 파이프하지 않음 - 터미널에 직접 출력
         text=True,
@@ -128,8 +128,8 @@ try:
     print("     - 'Start Shopping' 버튼을 클릭하여 쇼핑 시작")
     print("")
     print("  2. 두 개의 카메라 창이 열립니다:")
-    print("     - Front Camera: 웹캠 0번 (USB 카메라 - 장애물 감지)")
-    print("     - Cart Camera: 웹캠 2번 (내장 카메라 - 상품 인식 + ROI 표시)")
+    print("     - Front Camera: 웹캠 2번 (USB 카메라 - 장애물 감지)")
+    print("     - Cart Camera: 웹캠 0번 (내장 카메라 - 상품 인식 + ROI 표시)")
     print("")
     print("  3. 쇼핑 중:")
     print("     - 내장 카메라에 상품을 보여주고 아래로 이동")

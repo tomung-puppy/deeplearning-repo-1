@@ -132,6 +132,42 @@ class SmartCartEngine:
         self._last_product_ts = now
         return True
 
+    def update_item_quantity(self, session_id: int, product_id: int, quantity: int):
+        """Update quantity of a specific product in cart"""
+        print(
+            f"[Engine] Updating quantity: product_id={product_id}, quantity={quantity}"
+        )
+
+        # Update DB
+        self.tx_dao.update_item_quantity(session_id, product_id, quantity)
+
+        # Get updated cart and send to UI
+        cart_items = self.tx_dao.list_cart_items(session_id)
+        total = sum(item["subtotal"] for item in cart_items)
+
+        msg = Protocol.ui_command(
+            UICommand.UPDATE_CART, {"items": cart_items, "total": total}
+        )
+        self.ui_client.send_request(msg)
+        print(f"[Engine] Quantity updated, cart refreshed")
+
+    def remove_cart_item(self, session_id: int, product_id: int):
+        """Remove a specific product from cart"""
+        print(f"[Engine] Removing item: product_id={product_id}")
+
+        # Remove from DB
+        self.tx_dao.remove_cart_item(session_id, product_id)
+
+        # Get updated cart and send to UI
+        cart_items = self.tx_dao.list_cart_items(session_id)
+        total = sum(item["subtotal"] for item in cart_items)
+
+        msg = Protocol.ui_command(
+            UICommand.UPDATE_CART, {"items": cart_items, "total": total}
+        )
+        self.ui_client.send_request(msg)
+        print(f"[Engine] Item removed, cart refreshed")
+
     def reset(self) -> None:
         """Resets the engine's session state."""
         self.last_obstacle_level = DangerLevel.NORMAL

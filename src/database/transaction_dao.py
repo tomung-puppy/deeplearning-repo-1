@@ -71,21 +71,59 @@ class TransactionDAO:
         self.db.execute(sql, (session_id, product_id, quantity))
 
     def list_cart_items(self, session_id: int) -> List[Dict]:
-        """Get all items in cart with product info"""
+        """Get all items in cart with product info (consolidates duplicates)"""
         sql = """
         SELECT
-            ci.item_id,
+            MIN(ci.item_id) as item_id,
             ci.product_id,
             p.name as product_name,
             p.price,
-            ci.quantity,
-            (ci.quantity * p.price) AS subtotal
+            CAST(SUM(ci.quantity) AS SIGNED) as quantity,
+            CAST(SUM(ci.quantity) * p.price AS SIGNED) AS subtotal
         FROM cart_items ci
         JOIN products p ON ci.product_id = p.product_id
         WHERE ci.session_id = %s
-        ORDER BY ci.added_at DESC
+        GROUP BY ci.product_id, p.name, p.price
+        ORDER BY MIN(ci.added_at) DESC
         """
         return self.db.fetch_all(sql, (session_id,))
+
+    def update_item_quantity(
+        self, session_id: int, product_id: int, quantity: int
+    ) -> bool:
+        """Update quantity of a specific product in cart (handles duplicate rows)"""
+        if quantity <= 0:
+            return self.remove_cart_item(session_id, product_id)
+
+        # First, consolidate any duplicate rows by summing quantities
+        # Then update to the new quantity
+        try:
+            # Delete all existing rows for this product
+            delete_sql = """
+            DELETE FROM cart_items
+            WHERE session_id = %s AND product_id = %s
+            """
+            self.db.execute(delete_sql, (session_id, product_id))
+
+            # Insert a single row with the new quantity
+            insert_sql = """
+            INSERT INTO cart_items (session_id, product_id, quantity)
+            VALUES (%s, %s, %s)
+            """
+            self.db.execute(insert_sql, (session_id, product_id, quantity))
+            return True
+        except Exception as e:
+            print(f"[TransactionDAO] Error updating quantity: {e}")
+            return False
+
+    def remove_cart_item(self, session_id: int, product_id: int) -> bool:
+        """Remove a specific product from cart"""
+        sql = """
+        DELETE FROM cart_items
+        WHERE session_id = %s AND product_id = %s
+        """
+        self.db.execute(sql, (session_id, product_id))
+        return True
 
     # =========================
     # Order / Checkout
@@ -111,18 +149,16 @@ class TransactionDAO:
         order_id: int,
         product_id: int,
         snap_price: int,
-        snap_img_url: Optional[str],
     ) -> None:
         sql = """
         INSERT INTO order_details (
             order_id,
             product_id,
-            snap_price,
-            snap_img_url
+            snap_price
         )
-        VALUES (%s, %s, %s, %s)
+        VALUES (%s, %s, %s)
         """
         self.db.execute(
             sql,
-            (order_id, product_id, snap_price, snap_img_url),
+            (order_id, product_id, snap_price),
         )

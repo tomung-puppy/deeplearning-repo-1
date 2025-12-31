@@ -1,6 +1,7 @@
 from ultralytics import YOLO
 from common.config import config
 import time
+import numpy as np
 
 
 class ProductRecognizer:
@@ -9,10 +10,16 @@ class ProductRecognizer:
             model_path = (
                 config.model.product_recognizer.weights
                 if config
-                else "models/product_recognizer/product_yolo8s.pt"
+                else "models/product_recognizer/product_yolov8s.pt"
             )
         self.model = YOLO(model_path)
         self.threshold = config.model.product_recognizer.confidence if config else 0.7
+
+        # Check if model is OBB (Oriented Bounding Box) or regular detection
+        self.is_obb = self.model.task == "obb"
+        print(
+            f"[ProductRecognizer] Model type: {'OBB' if self.is_obb else 'Detection'}"
+        )
 
         # ROI + 모션 추적 시스템
         self.tracked_objects = (
@@ -31,26 +38,66 @@ class ProductRecognizer:
         프레임 내의 상품을 인식하여 DB 조회를 위한 ID 반환
         바운딩 박스 정보도 포함
         """
-        results = self.model.predict(frame, conf=self.threshold, verbose=False)
+        try:
+            results = self.model.predict(frame, conf=self.threshold, verbose=False)
 
-        if len(results) > 0 and len(results[0].boxes) > 0:
-            # 가장 신뢰도가 높은 첫 번째 객체 선택
-            top_box = results[0].boxes[0]
-            yolo_class = int(top_box.cls[0])
+            # 안전한 None 체크
+            if results is None:
+                return {"status": "none"}
 
-            # YOLO class (0-8) → DB product_id (1-9) 매핑
-            product_id = yolo_class + 1
-            confidence = float(top_box.conf[0])
+            # OBB vs Detection 모델 처리
+            if self.is_obb:
+                if (
+                    len(results) > 0
+                    and results[0].obb is not None
+                    and len(results[0].obb) > 0
+                ):
+                    # OBB 모델: obb 속성 사용
+                    top_box = results[0].obb[0]
+                    yolo_class = int(top_box.cls[0])
+                    confidence = float(top_box.conf[0])
 
-            # 바운딩 박스 좌표 (x1, y1, x2, y2)
-            bbox = top_box.xyxy[0].cpu().numpy().tolist()
+                    # OBB는 회전된 박스이므로 xyxyxyxy (8개 좌표) 형식
+                    # 하지만 간단하게 하려면 xyxy 형식으로 변환
+                    xyxyxyxy = top_box.xyxyxyxy[0].cpu().numpy()
+                    x_coords = xyxyxyxy[::2]  # x 좌표들
+                    y_coords = xyxyxyxy[1::2]  # y 좌표들
+                    bbox = [
+                        float(x_coords.min()),
+                        float(y_coords.min()),
+                        float(x_coords.max()),
+                        float(y_coords.max()),
+                    ]
 
-            return {
-                "product_id": product_id,
-                "confidence": confidence,
-                "bbox": bbox,  # [x1, y1, x2, y2]
-                "status": "detected",
-            }
+                    product_id = yolo_class + 1
+                    return {
+                        "product_id": product_id,
+                        "confidence": confidence,
+                        "bbox": bbox,
+                        "status": "detected",
+                    }
+            else:
+                if (
+                    len(results) > 0
+                    and results[0].boxes is not None
+                    and len(results[0].boxes) > 0
+                ):
+                    # 일반 Detection 모델: boxes 속성 사용
+                    top_box = results[0].boxes[0]
+                    yolo_class = int(top_box.cls[0])
+                    product_id = yolo_class + 1
+                    confidence = float(top_box.conf[0])
+                    bbox = top_box.xyxy[0].cpu().numpy().tolist()
+
+                    return {
+                        "product_id": product_id,
+                        "confidence": confidence,
+                        "bbox": bbox,
+                        "status": "detected",
+                    }
+
+        except Exception as e:
+            print(f"[ProductRecognizer] Error in recognize: {e}")
 
         return {"status": "none"}
 
@@ -59,8 +106,8 @@ class ProductRecognizer:
         물건을 카트에 넣는 순간을 감지하는 인식 메서드
 
         동작 원리:
-        1. 상단 진입 영역(0~35%)에서 물체 첫 감지 → 추적 시작
-        2. 물체가 트리거 영역(60% 이하)으로 이동 → "카트에 추가됨" 이벤트 발생
+        1. 상단 진입 영역(0~55%)에서 물체 첫 감지 → 추적 시작
+        2. 물체가 트리거 영역(70% 이하)으로 이동 → "카트에 추가됨" 이벤트 발생
         3. 쿨다운: 같은 물건을 3초 내에 재인식하지 않음
 
         Args:
@@ -81,18 +128,57 @@ class ProductRecognizer:
         entry_zone_y = h * self.entry_zone_ratio
         trigger_zone_y = h * self.trigger_zone_ratio
 
-        results = self.model.predict(frame, conf=self.threshold, verbose=False)
+        try:
+            results = self.model.predict(frame, conf=self.threshold, verbose=False)
+        except Exception as e:
+            print(f"[ProductRecognizer] Error in predict: {e}")
+            return {"status": "none", "all_detections": []}
 
         # 현재 프레임에서 감지된 모든 물체들
         all_detections = []
         main_event = None
 
-        if len(results) > 0 and len(results[0].boxes) > 0:
-            for box in results[0].boxes:
-                product_id = int(box.cls[0]) + 1
-                bbox = box.xyxy[0].cpu().numpy()
+        # 안전한 None 체크
+        if results is None or len(results) == 0:
+            return {"status": "none", "all_detections": []}
+
+        # OBB vs Detection 모델 처리
+        boxes_data = []
+        if self.is_obb:
+            if results[0].obb is not None and len(results[0].obb) > 0:
+                for obb_box in results[0].obb:
+                    # OBB를 일반 bbox로 변환
+                    xyxyxyxy = obb_box.xyxyxyxy[0].cpu().numpy()
+                    x_coords = xyxyxyxy[::2]
+                    y_coords = xyxyxyxy[1::2]
+                    bbox = np.array(
+                        [x_coords.min(), y_coords.min(), x_coords.max(), y_coords.max()]
+                    )
+
+                    boxes_data.append(
+                        {
+                            "bbox": bbox,
+                            "cls": int(obb_box.cls[0]),
+                            "conf": float(obb_box.conf[0]),
+                        }
+                    )
+        else:
+            if results[0].boxes is not None and len(results[0].boxes) > 0:
+                for box in results[0].boxes:
+                    boxes_data.append(
+                        {
+                            "bbox": box.xyxy[0].cpu().numpy(),
+                            "cls": int(box.cls[0]),
+                            "conf": float(box.conf[0]),
+                        }
+                    )
+
+        if len(boxes_data) > 0:
+            for box_data in boxes_data:
+                product_id = box_data["cls"] + 1
+                bbox = box_data["bbox"]
                 center_y = (bbox[1] + bbox[3]) / 2
-                confidence = float(box.conf[0])
+                confidence = box_data["conf"]
 
                 # 모든 물체 정보 수집 (바운딩 박스 표시용)
                 detection_info = {

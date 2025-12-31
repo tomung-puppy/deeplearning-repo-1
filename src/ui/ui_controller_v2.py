@@ -99,6 +99,8 @@ class UIController:
         """Connect dashboard buttons to handlers"""
         self.dashboard.start_shopping_signal.connect(self._on_start_shopping)
         self.dashboard.confirm_checkout_signal.connect(self._on_checkout)
+        self.dashboard.update_quantity_signal.connect(self._on_update_quantity)
+        self.dashboard.remove_item_signal.connect(self._on_remove_item)
 
     # =========================
     # Shopping Session Management
@@ -159,6 +161,51 @@ class UIController:
 
         except Exception as e:
             print(f"[UI Controller] ❌ Error during checkout: {e}")
+
+    def _on_update_quantity(self, product_id: int, new_quantity: int):
+        """Handle quantity update request"""
+        print(
+            f"[UI Controller] Updating quantity: product_id={product_id}, new_quantity={new_quantity}"
+        )
+
+        if not self.current_session_id:
+            print("[UI Controller] ❌ No active session")
+            return
+
+        try:
+            msg = Protocol.ui_request(
+                UIRequest.UPDATE_QUANTITY,
+                {
+                    "session_id": self.current_session_id,
+                    "product_id": product_id,
+                    "quantity": new_quantity,
+                },
+            )
+            self._send_to_main(msg)
+            print(f"[UI Controller] ✅ Quantity update request sent")
+        except Exception as e:
+            print(f"[UI Controller] ❌ Error updating quantity: {e}")
+
+    def _on_remove_item(self, product_id: int):
+        """Handle item removal request"""
+        print(f"[UI Controller] Removing item: product_id={product_id}")
+
+        if not self.current_session_id:
+            print("[UI Controller] ❌ No active session")
+            return
+
+        try:
+            msg = Protocol.ui_request(
+                UIRequest.REMOVE_ITEM,
+                {
+                    "session_id": self.current_session_id,
+                    "product_id": product_id,
+                },
+            )
+            self._send_to_main(msg)
+            print(f"[UI Controller] ✅ Item removal request sent")
+        except Exception as e:
+            print(f"[UI Controller] ❌ Error removing item: {e}")
 
     # =========================
     # TCP Communication

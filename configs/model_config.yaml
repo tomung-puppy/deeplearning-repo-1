@@ -8,4 +8,4 @@ obstacle_detector:
 
 product_recognizer:
   weights: "models/product_recognizer/product_yolov8s.pt"
-  confidence: 0.7
+  confidence: 0.6

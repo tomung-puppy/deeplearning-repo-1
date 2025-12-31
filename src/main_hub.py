@@ -144,6 +144,12 @@ class MainPC2Hub:
         if cmd == UIRequest.CHECKOUT:
             return self._handle_ui_checkout()
 
+        if cmd == UIRequest.UPDATE_QUANTITY:
+            return self._handle_ui_update_quantity(message["payload"]["data"])
+
+        if cmd == UIRequest.REMOVE_ITEM:
+            return self._handle_ui_remove_item(message["payload"]["data"])
+
         return {"status": "UNKNOWN_CMD"}
 
     def _handle_ui_start(self) -> dict:
@@ -217,7 +223,6 @@ class MainPC2Hub:
                 order_id=order_id,
                 product_id=item["product_id"],
                 snap_price=item["price"],
-                snap_img_url=None,  # TODO: Add product image URL if available
             )
         print(f"[Main Hub] ✅ Order details saved: {len(cart_items)} items")
 
@@ -242,6 +247,43 @@ class MainPC2Hub:
         self.engine.reset()
 
         return {"status": "OK", "order_id": order_id}
+
+    def _handle_ui_update_quantity(self, data: dict) -> dict:
+        """Handle quantity update request from UI"""
+        session_id = data.get("session_id")
+        product_id = data.get("product_id")
+        quantity = data.get("quantity")
+
+        print(
+            f"[Main Hub] UPDATE_QUANTITY: session={session_id}, product={product_id}, qty={quantity}"
+        )
+
+        if not session_id or product_id is None or quantity is None:
+            return {"status": "ERROR", "reason": "Missing parameters"}
+
+        try:
+            self.engine.update_item_quantity(session_id, product_id, quantity)
+            return {"status": "OK"}
+        except Exception as e:
+            self.logger.log_event("ERROR", f"Failed to update quantity: {e}")
+            return {"status": "ERROR", "reason": str(e)}
+
+    def _handle_ui_remove_item(self, data: dict) -> dict:
+        """Handle item removal request from UI"""
+        session_id = data.get("session_id")
+        product_id = data.get("product_id")
+
+        print(f"[Main Hub] REMOVE_ITEM: session={session_id}, product={product_id}")
+
+        if not session_id or product_id is None:
+            return {"status": "ERROR", "reason": "Missing parameters"}
+
+        try:
+            self.engine.remove_cart_item(session_id, product_id)
+            return {"status": "OK"}
+        except Exception as e:
+            self.logger.log_event("ERROR", f"Failed to remove item: {e}")
+            return {"status": "ERROR", "reason": str(e)}
 
     # =========================
     # AI Event Handler
