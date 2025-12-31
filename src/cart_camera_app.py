@@ -22,7 +22,7 @@ class CartEdgeApp:
         main_hub_ip = config.network.pc2_main.ip
         front_cam_port = config.network.pc2_main.udp_front_cam_port
         cart_cam_port = config.network.pc2_main.udp_cart_cam_port
-        
+
         # Camera resolution and FPS
         self.img_width, self.img_height = config.app.camera.resolution
         self.fps = config.app.camera.fps
