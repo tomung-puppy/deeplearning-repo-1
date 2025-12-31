@@ -12,7 +12,7 @@ from ultralytics import YOLO
 from common.config import config
 
 
-def test_model(model_path):
+def check_model(model_path):
     print(f"\n{'='*60}")
     print(f"Testing model: {model_path}")
     print(f"{'='*60}")
@@ -57,11 +57,11 @@ def test_model(model_path):
 
 if __name__ == "__main__":
     # Test best.pt
-    test_model("models/product_recognizer/best.pt")
+    check_model("models/product_recognizer/best.pt")
 
     # Test other models for comparison
     print("\n\n")
-    test_model("models/product_recognizer/product_yolov8s.pt")
+    check_model("models/product_recognizer/product_yolov8s.pt")
 
     print(f"\n{'='*60}")
     print("Current config:")

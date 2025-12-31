@@ -43,7 +43,6 @@ def convert_all_xmls(input_dir, output_dir, class_index=0):
             obb_results = []
             for obj in root.iter('object'):
                 xmlbox = obj.find('bndbox')
-                obj_name = obj.find('name').text
                 
                 xmin = float(xmlbox.find('xmin').text)
                 ymin = float(xmlbox.find('ymin').text)
@@ -70,7 +69,7 @@ def convert_all_xmls(input_dir, output_dir, class_index=0):
         except Exception as e:
             print(f"오류 발생 ({filename}): {e}")
 
-    print(f"\n--- 변환 완료 ---")
+    print("\n--- 변환 완료 ---")
     print(f"총 처리된 파일 수: {count}")
 
 # --- 설정 구간 ---

@@ -1,5 +1,4 @@
 # scripts/02_split_dataset.py
-import os
 import shutil
 import random
 from pathlib import Path
@@ -96,8 +95,10 @@ def split_dataset():
         dest_img_dir = PROCESSED_DATA_DIR / "images" / set_name
         dest_lbl_dir = PROCESSED_DATA_DIR / "labels" / set_name
         
-        if dest_img_dir.exists(): shutil.rmtree(dest_img_dir)
-        if dest_lbl_dir.exists(): shutil.rmtree(dest_lbl_dir)
+        if dest_img_dir.exists():
+            shutil.rmtree(dest_img_dir)
+        if dest_lbl_dir.exists():
+            shutil.rmtree(dest_lbl_dir)
         dest_img_dir.mkdir(parents=True, exist_ok=True)
         dest_lbl_dir.mkdir(parents=True, exist_ok=True)
 

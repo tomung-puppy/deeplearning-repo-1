@@ -1,5 +1,4 @@
 # scripts/01_preprocess_data.py
-import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import shutil
@@ -138,7 +137,6 @@ def process_raw_data():
 
     for image_tag in tqdm(root.findall("image"), desc="Processing images"):
         image_name = image_tag.get("name")
-        image_id = image_tag.get("id")
         
         # Find the source image file
         source_image_path = raw_images_dir / image_name
