@@ -4,7 +4,6 @@ Test YOLO model to see what it detects
 """
 import sys
 from pathlib import Path
-import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -20,10 +19,10 @@ def test_model(model_path):
 
     try:
         model = YOLO(model_path)
-        print(f"✓ Model loaded successfully")
+        print("✓ Model loaded successfully")
 
         # Model info
-        print(f"\nModel Info:")
+        print("\nModel Info:")
         print(f"  - Type: {model.task}")
         print(f"  - Classes: {model.names}")
         print(
@@ -39,13 +38,13 @@ def test_model(model_path):
             results = model.predict(test_img, conf=conf, verbose=False)
 
             if results is None:
-                print(f"  ❌ Results is None")
+                print("  ❌ Results is None")
             elif len(results) == 0:
-                print(f"  ⚠ Results is empty")
+                print("  ⚠ Results is empty")
             elif results[0].boxes is None:
-                print(f"  ⚠ No boxes attribute")
+                print("  ⚠ No boxes attribute")
             elif len(results[0].boxes) == 0:
-                print(f"  ✓ No detections (expected for blank image)")
+                print("  ✓ No detections (expected for blank image)")
             else:
                 print(f"  ✓ {len(results[0].boxes)} detections")
 
