@@ -1,8 +1,11 @@
 import numpy as np
 import sys
 import os
+
 # ensure src/ is on path so package imports work when running tests from repo root
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from detectors.product_dl import ProductRecognizer
 
@@ -57,14 +60,20 @@ def test_recognize_with_trigger_added_after_duration():
     pr.model = model
 
     t0 = 1000.0
-    r1 = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0)
+    r1 = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0
+    )
     assert r1["status"] in ("tracking", "none")
 
-    r2 = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 0.6)
+    r2 = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 0.6
+    )
     assert r2["status"] == "tracking"
     assert r2["main_event"]["status"] == "tracking"
 
-    r3 = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 1.1)
+    r3 = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 1.1
+    )
     assert r3["status"] == "added"
     assert r3["main_event"]["status"] == "added"
 
@@ -80,9 +89,15 @@ def test_cooldown_prevents_immediate_readd():
 
     t0 = 2000.0
     # call a few times and ensure one of the calls returns 'added'
-    r1 = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0)
-    r2 = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 0.6)
-    r3 = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 0.7)
+    r1 = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0
+    )
+    r2 = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 0.6
+    )
+    r3 = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=t0 + 0.7
+    )
 
     statuses = {r1.get("status"), r2.get("status"), r3.get("status")}
     assert "added" in statuses
@@ -97,14 +112,20 @@ def test_cooldown_prevents_immediate_readd():
     assert added_time is not None
 
     # immediately show again within cooldown (0.5s after added)
-    res2 = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=added_time + 0.5)
+    res2 = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=added_time + 0.5
+    )
     # status should either be 'none' or report cooldown for that product
-    assert res2["status"] in ("none", "tracking") or any(d.get("state") == "cooldown" for d in res2.get("all_detections", []))
+    assert res2["status"] in ("none", "tracking") or any(
+        d.get("state") == "cooldown" for d in res2.get("all_detections", [])
+    )
 
 
 def test_no_detection_returns_none():
     pr = ProductRecognizer(model_path=None)
     pr.model = DummyModel([[]])
 
-    res = pr.recognize_with_trigger(np.zeros((100, 100, 3), dtype=np.uint8), current_time=3000.0)
+    res = pr.recognize_with_trigger(
+        np.zeros((100, 100, 3), dtype=np.uint8), current_time=3000.0
+    )
     assert res["status"] == "none"
