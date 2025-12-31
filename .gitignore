@@ -208,6 +208,28 @@ __marimo__/
 
 # data
 /data/
+# Project-specific
+# Log files
+test_*.log
+logs_*.txt
+*.log
+
+# Temporary test files
+/test/simple_ui_test.py
+/test/test_local_simple.py
+/test/hybrid_camera_app.py
+/test/test_webcam.py
+
+# Model files (too large)
+/models/*.pt
+/models/*.pth
+!/models/dummy.pt
+
+# Video files
+*.mp4
+*.avi
+*.mov
+
 test/yw1/data/*
 test/yw1/dataset/*
 
