@@ -2,7 +2,6 @@
 from ultralytics import YOLO
 from pathlib import Path
 import torch
-import os
 
 # --- Configuration ---
 # IMPORTANT: You must update this path to point to the specific training run you want to use for prediction.
