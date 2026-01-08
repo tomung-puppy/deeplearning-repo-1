@@ -14,8 +14,9 @@ import shutil
 # You might need to adjust RUN_NAME to match your actual training run.
 ROOT_DIR = Path(__file__).resolve().parents[3]
 RUNS_DIR = ROOT_DIR /"test"/ "yw1" / "runs" / "train"
+RUN_NAME = "obb_negative"
 # Example: WEIGHTS_PATH = RUNS_DIR / "your_run_name" / "weights" / "best.pt"
-WEIGHTS_PATH = ROOT_DIR / "models" / "product_recognizer" / "obb_negative.pt" 
+WEIGHTS_PATH = ROOT_DIR / "models" / "product_recognizer" / (RUN_NAME+".pt") 
 
 # Path to the dataset configuration YAML file for evaluation.
 DATASET_CONFIG_PATH = ROOT_DIR / "test" / "yw1" / "data" / "TEST_VIDEO" / "data.yaml"
@@ -69,7 +70,7 @@ def test_model_performance():
             data=str(DATASET_CONFIG_PATH),
             split='test',  # Evaluate on the 'test' split defined in data.yaml
             project=(ROOT_DIR / "test" / "yw1" / "runs" / "test"), # Save evaluation results
-            name="test_evaluation", # Name for this specific evaluation run
+            name=RUN_NAME, # Name for this specific evaluation run
             exist_ok=False, # Allow overwriting previous test runs if needed
             device=device,
             # Add other validation parameters if needed, e.g., imgsz, conf, iou
