@@ -38,37 +38,87 @@ class SmartCartEngine:
         self._last_product_ts: float = 0.0
 
     def process_obstacle_event(self, data: dict, session_id: int):
-        """Processes an obstacle danger event from the AI."""
+        """
+        Processes an obstacle danger event from the AI.
+        Now supports advanced tracking and risk assessment from obstacle_v2.
+        """
         level = DangerLevel(data["level"])
 
-        # 1. Log event to database
-        self.obstacle_dao.log_obstacle(
-            session_id=session_id,
-            object_type=data.get("object_type", "UNKNOWN"),
-            distance=data.get("distance", 1000),
-            speed=data.get("speed", 0),
-            direction=data.get("direction", "stop"),
-            is_warning=level >= DangerLevel.CAUTION,
+        # Extract detailed information from new algorithm
+        object_type = data.get("object_type", "UNKNOWN")
+        distance = data.get("distance", 1000)
+        speed = data.get("speed", 0)
+        direction = data.get("direction", "front")
+
+        # New fields from risk_engine
+        highest_risk_obj = data.get("highest_risk_object")
+        track_id = highest_risk_obj.get("track_id", -1) if highest_risk_obj else -1
+        pttc_s = highest_risk_obj.get("pttc_s", 1e9) if highest_risk_obj else 1e9
+        risk_score = highest_risk_obj.get("score", 0.0) if highest_risk_obj else 0.0
+        in_center = (
+            highest_risk_obj.get("in_center", False) if highest_risk_obj else False
+        )
+        approaching = (
+            highest_risk_obj.get("approaching", False) if highest_risk_obj else False
         )
 
-        # 2. Avoid sending duplicate events
+        # 1. Log event to database with enhanced tracking info
+        self.obstacle_dao.log_obstacle(
+            session_id=session_id,
+            object_type=object_type,
+            distance=distance,
+            speed=speed,
+            direction=direction,
+            is_warning=level >= DangerLevel.CAUTION,
+            track_id=track_id,
+            pttc_s=pttc_s,
+            risk_score=risk_score,
+            in_center=in_center,
+            approaching=approaching,
+        )
+
+        # 2. Check if level changed (send update to UI on any change)
         if level == self.last_obstacle_level:
             return
         self.last_obstacle_level = level
 
-        # 3. Send warning to UI if danger level is high enough
-        if level >= DangerLevel.CAUTION:
-            msg = Protocol.ui_command(
-                UICommand.SHOW_ALARM,
+        # 3. Send status update to UI (including SAFE state to reset LED)
+        # Always send update when level changes, even when returning to SAFE
+        # Prepare detailed alert message
+        alert_data = {
+            "level": level.value,
+            "level_name": level.name,
+            "object_type": object_type,
+            "distance": distance,
+            "speed": speed,
+            "direction": direction,
+        }
+
+        # Add risk details if available
+        if highest_risk_obj:
+            alert_data.update(
                 {
-                    "level": level.value,
-                    "object_type": data.get("object_type", "obstacle"),
-                    "distance": data.get("distance", 0),
-                    "speed": data.get("speed", 0),
-                    "direction": data.get("direction", "front"),
-                },
+                    "track_id": track_id,
+                    "pttc_s": round(pttc_s, 2) if pttc_s < 1e6 else None,
+                    "risk_score": round(risk_score, 2),
+                    "in_center": in_center,
+                    "approaching": approaching,
+                    "class_name": highest_risk_obj.get("class_name", "unknown"),
+                }
             )
-            self.ui_client.send_request(msg)
+
+        msg = Protocol.ui_command(UICommand.SHOW_ALARM, alert_data)
+        self.ui_client.send_request(msg)
+
+        if level >= DangerLevel.CAUTION:
+            print(
+                f"[Engine] Obstacle alert sent: level={level.name}, object={object_type}, "
+                f"track_id={track_id}, pTTC={pttc_s:.2f}s"
+                if pttc_s < 1e6
+                else f"[Engine] Obstacle alert sent: level={level.name}, object={object_type}"
+            )
+        else:
+            print(f"[Engine] Obstacle cleared: level={level.name} (SAFE)")
 
     def process_product_event(self, data: dict, session_id: int):
         """Processes a product detection event from the AI."""

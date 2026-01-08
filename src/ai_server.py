@@ -93,6 +93,8 @@ class AIServer:
     # =========================
     def _obstacle_inference_loop(self):
         print("Obstacle inference loop started.")
+        last_sent_level = None  # Track last sent level to avoid redundant events
+
         while True:
             with self._obstacle_lock:
                 jpeg = self._latest_obstacle_bytes
@@ -108,9 +110,11 @@ class AIServer:
             result = self.obstacle_model.detect(frame)
             level = DangerLevel(result.get("level", 0))
 
-            # Push event if danger is detected. Debouncing is handled by the main hub's engine.
-            if level >= DangerLevel.CAUTION:
+            # Send event only when level changes (including SAFE transitions)
+            # This prevents spamming the Main Hub with identical states
+            if level != last_sent_level:
                 self._push_event(AIEvent.OBSTACLE_DANGER, result)
+                last_sent_level = level
 
             time.sleep(0.05)  # Control inference frequency
 
