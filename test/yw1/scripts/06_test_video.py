@@ -15,7 +15,7 @@ import shutil
 ROOT_DIR = Path(__file__).resolve().parents[3]
 RUNS_DIR = ROOT_DIR /"test"/ "yw1" / "runs" / "train"
 # Example: WEIGHTS_PATH = RUNS_DIR / "your_run_name" / "weights" / "best.pt"
-WEIGHTS_PATH = ROOT_DIR / "models" / "product_recognizer" / "product_yolov8s.pt" 
+WEIGHTS_PATH = ROOT_DIR / "models" / "product_recognizer" / "obb_negative.pt" 
 
 # Path to the dataset configuration YAML file for evaluation.
 DATASET_CONFIG_PATH = ROOT_DIR / "test" / "yw1" / "data" / "TEST_VIDEO" / "data.yaml"
@@ -83,6 +83,16 @@ def test_model_performance():
         print(f"  - mAP50-95 (OBB): {box_metrics.map:.4f}")
         print(f"  - mAP50 (OBB):    {box_metrics.map50:.4f}")
         print(f"  - mAP75 (OBB):    {box_metrics.map75:.4f}")
+
+        # Save box_metrics to a text file
+        output_dir = Path(metrics.save_dir)
+        output_file = output_dir / "box_metrics.txt"
+        with open(output_file, "w") as f:
+            f.write("Oriented Bounding Box Metrics:\n")
+            f.write(f"  - mAP50-95 (OBB): {box_metrics.map:.4f}\n")
+            f.write(f"  - mAP50 (OBB):    {box_metrics.map50:.4f}\n")
+            f.write(f"  - mAP75 (OBB):    {box_metrics.map75:.4f}\n")
+        print(f"Box metrics also saved to: {output_file}")
         # You can access other metrics like precision, recall, f1-score per class if available
         # print(metrics.results_dict) # For a dictionary of all results
 
