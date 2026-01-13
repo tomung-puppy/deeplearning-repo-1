@@ -247,3 +247,19 @@ test/yw1/runs/train/*/weights/*
 !test/yw1/runs/train/*/weights/best.pt
 
 !test/yw1/data/inference/input/.gitkeep
+
+# local artifacts
+runs_obstacle/
+__pycache__/
+*.pyc
+yolo11n-pose.pt
+configs/model_config_260104.yaml
+
+# local artifacts
+runs_obstacle/
+__pycache__/
+*.pyc
+
+# patch runner backups & screenshots
+*.bak_*
+Obstacle (dev engine + patch)*.png
