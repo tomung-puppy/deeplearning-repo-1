@@ -1,0 +1,30 @@
+# ==================================================
+# Central Network Configuration
+# ==================================================
+# Defines IPs and Ports for all services.
+# Using 127.0.0.1 for all IPs to facilitate local testing.
+
+# PC1: AI Inference Server
+pc1_ai:
+  ip: "127.0.0.1"
+  # PC1 listens on these UDP ports for video streams from the Main Hub
+  udp_port_front: 5000
+  udp_port_cart: 5001
+
+# PC2: Main Hub Server
+pc2_main:
+  ip: "127.0.0.1"
+  cart_code: "CART-001"
+  # PC2 listens on this TCP port for events from the AI Server
+  event_port: 6002
+  # PC2 listens on this TCP port for requests from the UI
+  ui_port: 7000
+  # PC2 listens on these UDP ports for video from the Cart (PC3)
+  udp_front_cam_port: 6000
+  udp_cart_cam_port: 6001
+
+# PC3: UI Dashboard
+pc3_ui:
+  ip: "127.0.0.1"
+  # PC3 listens on this TCP port for commands from the Main Hub
+  ui_port: 7001

@@ -1,0 +1,8 @@
+# 어플리케이션 운영 설정
+camera:
+  resolution: [640, 480]
+  fps: 30
+
+logging:
+  level: "INFO"
+  file_path: "logs/system.log"

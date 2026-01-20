@@ -1,0 +1,18 @@
+# AI & Image Processing
+ultralytics>=8.0.0
+opencv-python
+numpy
+
+# GUI
+PyQt6
+
+# Database & Config
+mysql-connector-python
+pyyaml
+python-dotenv
+
+# System
+requests
+
+pydantic
+pymysql
